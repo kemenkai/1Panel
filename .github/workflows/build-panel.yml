@@ -1,0 +1,160 @@
+name: Build Panel
+
+on:
+  push:
+    branches: [custom, win-service]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+  workflow_dispatch:
+
+env:
+  GO_VERSION: '1.25.7'
+  NODE_VERSION: '22.12.0'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            agent/go.sum
+            core/go.sum
+
+      # core/cmd/server/web embeds the frontend build output (not tracked in
+      # git); seed the two gitignored paths so go:embed resolves before the
+      # real frontend build happens in the build job.
+      - name: Seed web embed placeholders
+        run: |
+          [ -f core/cmd/server/web/index.html ] || touch core/cmd/server/web/index.html
+          [ -e core/cmd/server/web/assets ] || { mkdir -p core/cmd/server/web/assets && touch core/cmd/server/web/assets/placeholder; }
+
+      - name: Test agent (linux + windows cross-compile)
+        run: |
+          cd agent
+          go build ./...
+          GOOS=windows go build ./...
+          go vet ./app/service/
+          go test ./app/service/ -count=1
+
+      - name: Compile core (linux + windows cross-compile)
+        run: |
+          cd core
+          go build ./...
+          GOOS=windows go build ./...
+
+  # Native Windows test run exercises the platform-aware assertions that a
+  # linux GOOS=windows cross-compile cannot execute. Windows runners bill at
+  # 2x on private repos, so this only runs on manual dispatch.
+  test-windows:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: agent/go.sum
+
+      - name: Test agent on Windows
+        run: |
+          cd agent
+          go test ./app/service/ -count=1
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            agent/go.sum
+            core/go.sum
+
+      - name: Build frontend
+        env:
+          # private-repo runners have 7GB RAM; 4096 is enough for this vite build
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: |
+          cd frontend
+          npm ci
+          npm run build:pro
+
+      - name: Build binaries
+        run: |
+          set -euo pipefail
+          SHORT_SHA="${GITHUB_SHA::8}"
+          for target in linux/amd64 linux/arm64 windows/amd64; do
+            GOOS="${target%/*}"
+            GOARCH="${target#*/}"
+            EXT=""
+            [ "$GOOS" = "windows" ] && EXT=".exe"
+            OUT="dist/1panel-${GOOS}-${GOARCH}"
+            mkdir -p "$OUT"
+            echo "==> building $target"
+            (cd core  && CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags '-s -w' -o "../${OUT}/1panel-core${EXT}"  cmd/server/main.go)
+            (cd agent && CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags '-s -w' -o "../${OUT}/1panel-agent${EXT}" cmd/server/main.go)
+          done
+          echo "SHORT_SHA=$SHORT_SHA" >> "$GITHUB_ENV"
+
+      - name: Package artifacts with checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          for d in 1panel-linux-*; do
+            tar -czf "${d}-${SHORT_SHA}.tar.gz" "$d"
+          done
+          for d in 1panel-windows-*; do
+            (cd "$d" && zip -qr "../${d}-${SHORT_SHA}.zip" .)
+          done
+          sha256sum *.tar.gz *.zip > "checksums-${SHORT_SHA}.txt"
+          cat "checksums-${SHORT_SHA}.txt"
+
+      - name: Upload linux-amd64
+        uses: actions/upload-artifact@v4
+        with:
+          name: 1panel-linux-amd64-${{ env.SHORT_SHA }}
+          path: dist/1panel-linux-amd64-*.tar.gz
+          retention-days: 14
+
+      - name: Upload linux-arm64
+        uses: actions/upload-artifact@v4
+        with:
+          name: 1panel-linux-arm64-${{ env.SHORT_SHA }}
+          path: dist/1panel-linux-arm64-*.tar.gz
+          retention-days: 14
+
+      - name: Upload windows-amd64
+        uses: actions/upload-artifact@v4
+        with:
+          name: 1panel-windows-amd64-${{ env.SHORT_SHA }}
+          path: dist/1panel-windows-amd64-*.zip
+          retention-days: 14
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksums-${{ env.SHORT_SHA }}
+          path: dist/checksums-*.txt
+          retention-days: 14

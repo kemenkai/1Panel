@@ -471,6 +471,7 @@ func TestUnregisterLinuxServiceTearsDownOwnedUnit(t *testing.T) {
 // --- uninstall.sh content ----------------------------------------------------
 
 func TestBuildLinuxUninstallScriptContent(t *testing.T) {
+	requireLinuxRuntime(t)
 	serviceDir := filepath.Join(t.TempDir(), "demo-java")
 	unitPath := "/etc/systemd/system/demo-java.service"
 	item := &model.WindowsService{Name: "demo-java", DisplayName: "Demo Java"}
@@ -495,6 +496,7 @@ func TestBuildLinuxUninstallScriptContent(t *testing.T) {
 // --- start-script command line ----------------------------------------------
 
 func TestBuildLinuxStartScriptRendersJavaExec(t *testing.T) {
+	requireLinuxRuntime(t)
 	installDir := t.TempDir()
 	appDir := filepath.Join(installDir, "app")
 	item := &model.WindowsService{
@@ -520,6 +522,7 @@ func TestBuildLinuxStartScriptRendersJavaExec(t *testing.T) {
 }
 
 func TestBuildLinuxStartScriptRendersComposeExec(t *testing.T) {
+	requireLinuxRuntime(t)
 	installDir := t.TempDir()
 	composePath := filepath.Join(installDir, "docker-compose.yml")
 	item := &model.WindowsService{
@@ -538,6 +541,7 @@ func TestBuildLinuxStartScriptRendersComposeExec(t *testing.T) {
 }
 
 func TestBuildLinuxStartScriptExportsLibraryPath(t *testing.T) {
+	requireLinuxRuntime(t)
 	installDir := t.TempDir()
 	item := &model.WindowsService{
 		Name:        "demo-java",

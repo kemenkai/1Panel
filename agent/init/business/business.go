@@ -21,7 +21,7 @@ func Init() {
 }
 
 func syncApp() {
-	if global.CONF.Base.IsOffLine {
+	if global.CONF.Base.IsOffline {
 		return
 	}
 	setting, err := service.NewISettingService().GetSettingInfo()
@@ -69,7 +69,7 @@ func initAcmeAccount() {
 		createAcmeAccount := request.WebsiteAcmeAccountCreate{
 			Email:   "acme@1paneldev.com",
 			Type:    "letsencrypt",
-			KeyType: "2048",
+			KeyType: "RSA2048",
 		}
 		systemProxy, _ := service.NewISettingService().GetSystemProxy()
 		if systemProxy.URL != "" {

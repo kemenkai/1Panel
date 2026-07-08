@@ -186,6 +186,9 @@ func (u *FirewallService) OperateFirewall(req dto.FirewallOperation) error {
 		if err := client.Restart(); err != nil {
 			return err
 		}
+		if err := u.addPortsBeforeStart(client); err != nil {
+			return err
+		}
 		needRestartDocker = true
 	case "disableBanPing":
 		if err := firewall.UpdatePingStatus("0"); err != nil {
@@ -579,30 +582,21 @@ func (u *FirewallService) cleanUnUsedData(client firewall.FirewallClient) {
 }
 
 func (u *FirewallService) addPortsBeforeStart(client firewall.FirewallClient) error {
-	if !global.IsMaster {
-		if err := client.Port(fireClient.FireInfo{Port: global.CONF.Base.Port, Protocol: "tcp", Strategy: "accept"}, "add"); err != nil {
+	if client.Name() == "iptables" {
+		isInit, _ := iptables.LoadInitStatus("iptables", "base")
+		if !isInit {
+			return nil
+		}
+		return syncIptablesFirewallPortWhiteList(true)
+	}
+	portWhiteList, err := loadFirewallPortWhiteList()
+	if err != nil {
+		return err
+	}
+	for _, item := range portWhiteList {
+		if err := client.Port(fireClient.FireInfo{Port: item.Port, Protocol: item.Protocol, Strategy: "accept"}, "add"); err != nil {
 			return err
 		}
-	} else {
-		var portSetting model.Setting
-		_ = global.CoreDB.Where("key = ?", "ServerPort").First(&portSetting).Error
-		if len(portSetting.Value) != 0 {
-			if err := client.Port(fireClient.FireInfo{Port: portSetting.Value, Protocol: "tcp", Strategy: "accept"}, "add"); err != nil {
-				return err
-			}
-		}
-	}
-	if err := client.Port(fireClient.FireInfo{Port: loadSSHPort(), Protocol: "tcp", Strategy: "accept"}, "add"); err != nil {
-		return err
-	}
-	if err := client.Port(fireClient.FireInfo{Port: "80", Protocol: "tcp", Strategy: "accept"}, "add"); err != nil {
-		return err
-	}
-	if err := client.Port(fireClient.FireInfo{Port: "443", Protocol: "tcp", Strategy: "accept"}, "add"); err != nil {
-		return err
-	}
-	if err := client.Port(fireClient.FireInfo{Port: "443", Protocol: "udp", Strategy: "accept"}, "add"); err != nil {
-		return err
 	}
 
 	return client.Reload()

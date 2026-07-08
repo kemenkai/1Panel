@@ -14,7 +14,7 @@
                     <el-tooltip :content="loadTooltip()" placement="top">
                         <el-button
                             @click="toggleFullscreen"
-                            v-if="!mobile"
+                            v-if="!isMobile"
                             class="!border-none !bg-transparent !text-base !font-semibold !py-2 !px-1 mr-2.5"
                             icon="FullScreen"
                         ></el-button>
@@ -32,7 +32,7 @@
                 <div class="flex justify-start items-center gap-x-4 card-action">
                     <el-text class="cursor-pointer" @click="handleReset">{{ $t('commons.button.reset') }}</el-text>
                     <el-divider direction="vertical" class="!mx-0" />
-                    <el-text class="cursor-pointer ml-0" @click="saveContent()">
+                    <el-text v-permission class="cursor-pointer ml-0" @click="saveContent()">
                         {{ $t('commons.button.save') }}
                     </el-text>
                     <el-divider direction="vertical" class="!mx-0" />
@@ -105,7 +105,7 @@
                         class="monaco-editor sm:w-48 w-1/3 monaco-editor-background border-0 tree-container"
                         v-if="isShow"
                     >
-                        <div class="flex items-center justify-between pl-1 pr-1 py-0.5 h-6">
+                        <div class="flex items-center justify-between px-1 h-7">
                             <el-text size="small" @click="getUpData()" class="cursor-pointer">
                                 <el-icon>
                                     <Top />
@@ -119,22 +119,22 @@
                                 </el-icon>
                                 <span class="sm:inline hidden pl-1">{{ $t('commons.button.refresh') }}</span>
                             </el-text>
-                            <el-divider direction="vertical" v-if="!mobile" class="!mx-0" />
-                            <el-dropdown @command="handleCreate" v-if="!mobile" trigger="click">
+                            <el-divider direction="vertical" v-if="!isMobile" class="!mx-0" />
+                            <el-dropdown @command="handleCreate" v-if="!isMobile" trigger="click">
                                 <el-text size="small">
                                     {{ $t('commons.button.create') }}
                                     <el-icon><arrow-down /></el-icon>
                                 </el-text>
                                 <template #dropdown>
                                     <el-dropdown-menu>
-                                        <el-dropdown-item command="dir" class="!px-2">
+                                        <fu-dropdown-item v-permission command="dir" class="!px-2">
                                             <svg-icon class="!w-5 !h-5" iconName="p-file-folder"></svg-icon>
                                             {{ $t('file.dir') }}
-                                        </el-dropdown-item>
-                                        <el-dropdown-item command="file" class="!px-2">
+                                        </fu-dropdown-item>
+                                        <fu-dropdown-item v-permission command="file" class="!px-2">
                                             <svg-icon class="!w-5 !h-5" iconName="p-file-normal"></svg-icon>
                                             {{ $t('menu.files') }}
-                                        </el-dropdown-item>
+                                        </fu-dropdown-item>
                                     </el-dropdown-menu>
                                 </template>
                             </el-dropdown>
@@ -245,22 +245,24 @@
                             :on-remove-other-tab="removeOtherTab"
                         ></CodeTabs>
                         <div ref="codeBox" class="relative" :style="{ height: codeHeight }">
-                            <el-icon
-                                v-if="isShow"
-                                class="cursor-pointer absolute bg-gray-100 py-2 rounded-l-sm block top-1/3 -left-[9px]"
-                                size="9"
-                                @click="toggleShow"
-                            >
-                                <DArrowLeft />
-                            </el-icon>
-                            <el-icon
-                                v-else
-                                class="cursor-pointer absolute bg-gray-100 py-2 rounded-r-sm block top-1/3 z-50"
-                                size="9"
-                                @click="toggleShow"
-                            >
-                                <DArrowRight />
-                            </el-icon>
+                            <div class="absolute top-1/3">
+                                <el-icon
+                                    v-if="isShow"
+                                    class="cursor-pointer bg-gray-100 py-2 rounded-l-sm block -left-[9px]"
+                                    size="9"
+                                    @click="toggleShow"
+                                >
+                                    <DArrowLeft />
+                                </el-icon>
+                                <el-icon
+                                    v-else
+                                    class="cursor-pointer bg-gray-100 py-2 rounded-r-sm block z-50"
+                                    size="9"
+                                    @click="toggleShow"
+                                >
+                                    <DArrowRight />
+                                </el-icon>
+                            </div>
                             <div class="flex justify-center items-center h-full" v-if="fileTabs.length === 0">
                                 <el-empty :image="noUpdateImage" />
                             </div>
@@ -268,7 +270,7 @@
                     </div>
                 </div>
                 <div
-                    class="hidden code-footer pl-4 h-6 sm:flex justify-end items-center gap-4 rounded-b"
+                    class="hidden code-footer pl-4 h-7 sm:flex justify-end items-center gap-4 rounded-b"
                     ref="dialogFooter"
                 >
                     <el-divider direction="vertical" class="!h-6" v-if="config.theme" />
@@ -305,8 +307,7 @@
                     </el-dropdown>
                     <el-divider direction="vertical" class="!h-6" />
                     <el-text class="cursor-pointer inline-flex items-center gap-1" @click="openHistoryDrawer">
-                        <span>{{ $t('file.history') }}</span>
-                        <span class="text-xs text-gray-500">({{ historyVersionCount }})</span>
+                        <span class="el-dropdown-link">{{ $t('file.history') }} ({{ historyVersionCount }})</span>
                     </el-text>
                     <el-divider direction="vertical" class="!h-6" />
                     <el-dropdown trigger="click" max-height="300" placement="top" @command="changeLanguage">
@@ -406,6 +407,7 @@ import { loadMonacoLanguageSupport, setupMonacoEnvironment } from '@/utils/monac
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { Languages } from '@/global/mimetype';
 import { resolveEditorLanguage } from '@/utils/file';
+import { hasManagePermissionAccess } from '@/utils/permission';
 
 import type { TabPaneName } from 'element-plus';
 import { ElMessageBox, ElTreeV2 } from 'element-plus';
@@ -416,10 +418,12 @@ import { newUUID } from '@/utils/id';
 import { TreeNodeData } from 'element-plus/es/components/tree-v2/src/types';
 import { DArrowLeft, DArrowRight, Refresh, Top } from '@element-plus/icons-vue';
 import { loadBaseDir } from '@/api/modules/setting';
-import { GlobalStore } from '@/store';
 import CodeTabs from './tabs/index.vue';
 import FileHistoryDrawer from './history/index.vue';
 import noUpdateImage from '@/assets/images/no_update_app.svg';
+import { useGlobalStore } from '@/composables/useGlobalStore';
+
+const { isMobile } = useGlobalStore();
 
 type MonacoEditorApi = typeof import('monaco-editor/esm/vs/editor/editor.api');
 
@@ -565,11 +569,6 @@ const expandedNodeIds = ref(new Set());
 const toggleShow = () => {
     isShow.value = !isShow.value;
 };
-
-const globalStore = GlobalStore();
-const mobile = computed(() => {
-    return globalStore.isMobile();
-});
 
 type WordWrapOptions = 'off' | 'on' | 'wordWrapColumn' | 'bounded';
 
@@ -1008,6 +1007,10 @@ const loadHistoryVersionCount = async (path: string) => {
 };
 
 const saveContent = async () => {
+    if (!hasManagePermissionAccess()) {
+        MsgError(i18n.global.t('commons.res.forbidden'));
+        return;
+    }
     if (isEdit.value) {
         loading.value = true;
         try {

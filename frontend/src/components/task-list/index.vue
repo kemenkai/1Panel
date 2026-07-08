@@ -18,13 +18,17 @@
                 </template>
                 <template #main>
                     <ComplexTable :pagination-config="paginationConfig" :data="data" @search="search" :heightDiff="320">
-                        <el-table-column :label="$t('logs.taskName')" prop="name" min-width="180px"></el-table-column>
-                        <el-table-column :label="$t('commons.table.status')" prop="status" max-width="100px">
+                        <el-table-column :label="$t('logs.taskName')" prop="name" min-width="180px">
+                            <template #default="{ row }">
+                                {{ translateTaskText(row.name) }}
+                            </template>
+                        </el-table-column>
+                        <el-table-column :label="$t('commons.table.status')" prop="status" max-width="80px">
                             <template #default="{ row }">
                                 <Status :status="row.status" :msg="row.errorMsg" />
                             </template>
                         </el-table-column>
-                        <el-table-column :label="$t('commons.button.log')" prop="log" max-width="100px">
+                        <el-table-column :label="$t('commons.button.log')" prop="log" max-width="80px">
                             <template #default="{ row }">
                                 <el-button @click="openTaskLog(row)" link type="primary">
                                     {{ $t('website.check') }}
@@ -32,6 +36,7 @@
                             </template>
                         </el-table-column>
                         <el-table-column
+                            width="180px"
                             prop="createdAt"
                             :label="$t('commons.table.date')"
                             :formatter="dateFormat"
@@ -55,8 +60,9 @@ import { searchTasks } from '@/api/modules/log';
 import { reactive, ref } from 'vue';
 import { Log } from '@/api/interface/log';
 import bus from '@/global/bus';
-import { GlobalStore } from '@/store';
-const globalStore = GlobalStore();
+import { useGlobalStore } from '@/composables/useGlobalStore';
+import { translateTaskText } from '@/utils/task';
+const { currentNode } = useGlobalStore();
 
 const open = ref(false);
 const handleClose = () => {
@@ -101,7 +107,7 @@ const openTaskLog = (row: Log.Task) => {
 };
 
 const acceptParams = () => {
-    targeNode.value = globalStore.currentNode;
+    targeNode.value = currentNode.value;
     search();
     open.value = true;
 };

@@ -30,7 +30,7 @@ func HandleRequest(url, method string, timeout int) (int, []byte, error) {
 }
 
 func HandleRequestWithProxy(url, method string, timeout int) (int, []byte, error) {
-	transport := xpack.LoadRequestTransport()
+	transport := xpack.MultiNodeProvider.LoadRequestTransport()
 	return handleRequestWithTransport(url, method, transport, timeout)
 }
 
@@ -54,11 +54,11 @@ func handleRequestWithTransport(url, method string, transport *http.Transport, t
 	if err != nil {
 		return 0, nil, err
 	}
+	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return 0, nil, err
 	}
-	defer resp.Body.Close()
 
 	return resp.StatusCode, body, nil
 }
@@ -78,7 +78,7 @@ func HandleGet(url string) (*http.Response, error) {
 }
 
 func HandleGetWithProxy(url string) (*http.Response, error) {
-	transport := xpack.LoadRequestTransport()
+	transport := xpack.MultiNodeProvider.LoadRequestTransport()
 	return handleGetWithTransport(url, transport)
 }
 
@@ -106,6 +106,7 @@ func handleGetWithTransport(url string, transport *http.Transport) (*http.Respon
 		}
 	}
 	if resp.StatusCode == 404 {
+		_ = resp.Body.Close()
 		return nil, buserr.WithErr("ErrHttpReqNotFound", errors.New("no such resource"))
 	}
 

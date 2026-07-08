@@ -30,11 +30,11 @@
                         </el-tag>
 
                         <span class="mt-0.5">
-                            <el-button type="primary" @click="onHandle(dialogData.rowData)" link>
+                            <el-button type="primary" v-permission @click="onHandle(dialogData.rowData)" link>
                                 {{ $t('commons.button.handle') }}
                             </el-button>
                             <el-divider direction="vertical" />
-                            <el-button :disabled="!hasRecords" type="primary" @click="onClean" link>
+                            <el-button v-permission :disabled="!hasRecords" type="primary" @click="onClean" link>
                                 {{ $t('commons.button.clean') }}
                             </el-button>
                         </span>
@@ -80,7 +80,7 @@
                                         <el-table-column>
                                             <template #default="{ row }">
                                                 <span v-if="row.id === currentRecord.id" class="select-sign"></span>
-                                                <Status class="mr-2 ml-1 float-left" :status="row.status" />
+                                                <Status class="mr-2 mt-1 ml-1 float-left" :status="row.status" />
                                                 <div class="mt-0.5 float-left">
                                                     <span>
                                                         {{ dateFormat(0, 0, row.startTime) }}

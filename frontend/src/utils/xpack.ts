@@ -1,15 +1,28 @@
-import { getLicenseStatus, getMasterLicenseStatus, getSettingInfo } from '@/api/modules/setting';
+import {
+    getLicenseStatus,
+    getMasterLicenseStatus,
+    getSettingBaseInfo,
+    getEnterpriseLicenseStatus,
+} from '@/api/modules/setting';
 import { useTheme } from '@/global/use-theme';
 import {
     searchXpackSetting,
     updateXpackSettingByKey as updateXpackSettingByKeyFromExtension,
 } from '@/extensions/xpack';
 import { GlobalStore } from '@/store';
-const globalStore = GlobalStore();
-const { switchTheme } = useTheme();
 import faviconUrl from '@/assets/images/favicon.svg';
 
+let switchThemeFn: (() => void) | undefined;
+
+const switchTheme = () => {
+    if (!switchThemeFn) {
+        switchThemeFn = useTheme().switchTheme;
+    }
+    switchThemeFn();
+};
+
 export function resetXSetting() {
+    const globalStore = GlobalStore();
     globalStore.themeConfig.title = '';
     globalStore.themeConfig.logo = '';
     globalStore.themeConfig.logoWithText = '';
@@ -27,9 +40,10 @@ async function getColoredFavicon(url: string, color: string) {
 }
 
 export async function initFavicon() {
+    const globalStore = GlobalStore();
     document.title = globalStore.themeConfig.panelName;
     const favicon = globalStore.themeConfig.favicon;
-    const isPro = globalStore.isMasterProductPro;
+    const isPro = globalStore.isXpackOrEE;
     const themeColor = globalStore.themeConfig.primary;
     const customFaviconUrl = `/api/v2/images/favicon?t=${Date.now()}`;
     const fallbackSvg = isPro ? await getColoredFavicon(faviconUrl, themeColor) : '/public/favicon.png';
@@ -66,30 +80,68 @@ export async function getXpackSetting() {
 }
 
 const loadDataFromDB = async () => {
-    const res = await getSettingInfo();
+    const globalStore = GlobalStore();
+    const res = await getSettingBaseInfo();
     document.title = res.data.panelName;
     globalStore.entrance = res.data.securityEntrance;
     globalStore.openMenuTabs = res.data.menuTabs === 'Enable';
 };
 
 export async function loadProductProFromDB() {
-    const res = await getLicenseStatus();
-    if (!res || !res.data) {
-        globalStore.isProductPro = false;
-    } else {
-        globalStore.isProductPro = res.data.status === 'Bound';
-        if (globalStore.isProductPro) {
-            globalStore.productProExpires = Number(res.data.productPro);
+    const globalStore = GlobalStore();
+    if (!globalStore.isEnterprise) {
+        globalStore.isEnterpriseLicenseLoaded = true;
+        const res = await getLicenseStatus();
+        if (!res || !res.data) {
+            globalStore.isProductPro = false;
+            globalStore.productProExpires = 0;
+        } else {
+            globalStore.isProductPro = res.data.status === 'Bound';
+            if (globalStore.isProductPro) {
+                globalStore.productProExpires = Number(res.data.productPro);
+            } else {
+                globalStore.productProExpires = 0;
+            }
         }
+        return;
+    }
+    const res = await getEnterpriseLicenseStatus();
+    globalStore.isEnterpriseLicenseLoaded = true;
+    if (!res || !res.data) {
+        globalStore.isEnterpriseLicensed = false;
+        globalStore.isProductPro = false;
+        globalStore.productProExpires = 0;
+    } else {
+        globalStore.isEnterpriseLicensed = res.data.status === 'Bound';
+        globalStore.isProductPro = globalStore.isEnterpriseLicensed;
+        globalStore.productProExpires = globalStore.isProductPro ? Number(res.data.productPro) : 0;
     }
 }
 
 export async function loadMasterProductProFromDB() {
-    const res = await getMasterLicenseStatus();
-    if (!res || !res.data) {
-        globalStore.isMasterProductPro = false;
+    const globalStore = GlobalStore();
+    if (!globalStore.isEnterprise) {
+        globalStore.isEnterpriseLicenseLoaded = true;
+        const res = await getMasterLicenseStatus();
+        if (!res || !res.data) {
+            globalStore.isMasterProductPro = false;
+        } else {
+            globalStore.isMasterProductPro = res.data.status === 'Bound';
+        }
     } else {
-        globalStore.isMasterProductPro = res.data.status === 'Bound';
+        const res = await getEnterpriseLicenseStatus();
+        globalStore.isEnterpriseLicenseLoaded = true;
+        if (!res || !res.data) {
+            globalStore.isEnterpriseLicensed = false;
+            globalStore.isMasterProductPro = false;
+            globalStore.isProductPro = false;
+            globalStore.productProExpires = 0;
+        } else {
+            globalStore.isEnterpriseLicensed = res.data.status === 'Bound';
+            globalStore.isMasterProductPro = res.data.status === 'Bound';
+            globalStore.isProductPro = res.data.status === 'Bound';
+            globalStore.productProExpires = globalStore.isProductPro ? Number(res.data.productPro) : 0;
+        }
     }
     switchTheme();
     initFavicon();
@@ -97,6 +149,7 @@ export async function loadMasterProductProFromDB() {
 }
 
 export async function getXpackSettingForTheme() {
+    const globalStore = GlobalStore();
     const res2 = await searchXpackSetting();
     if (res2) {
         globalStore.themeConfig.title = res2.data?.title;

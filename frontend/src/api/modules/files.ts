@@ -68,8 +68,13 @@ export const stopDeCompressFile = (taskID: string) => {
     return http.post('files/decompress/stop', { taskID } as File.FileDeCompressStopReq);
 };
 
-export const getFileContent = (params: File.ReqFile) => {
-    return http.post<File.File>('files/content', params);
+export const getFileContent = (params: File.ReqFile, currentNode?: string) => {
+    return http.post<File.File>(
+        `files/content`,
+        params,
+        TimeoutEnum.T_3M,
+        currentNode ? { CurrentNode: currentNode } : undefined,
+    );
 };
 
 export const getPreviewContent = (params: File.PreviewContentReq) => {
@@ -202,7 +207,7 @@ export const addFavorite = (path: string) => {
 
 export const readByLine = (req: File.FileReadByLine, operateNode?: string) => {
     const params = operateNode ? `?operateNode=${operateNode}` : '';
-    return http.post<any>(`files/read${params}`, req, TimeoutEnum.T_40S);
+    return http.post<any>(`files/read/${encodeURIComponent(req.type)}${params}`, req, TimeoutEnum.T_40S);
 };
 
 export const removeFavorite = (id: number) => {
@@ -219,10 +224,6 @@ export const getRecycleStatus = () => {
 
 export const getRecycleStatusByNode = (node: string) => {
     return http.get<string>('files/recycle/status?operateNode=' + node);
-};
-
-export const getPathByType = (pathType: string) => {
-    return http.get<string>(`files/path/${pathType}`);
 };
 
 export const searchHostMount = () => {

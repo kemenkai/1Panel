@@ -36,8 +36,8 @@ type IClamService interface {
 	LoadBaseInfo() (dto.ClamBaseInfo, error)
 	Operate(operate string) error
 	SearchWithPage(search dto.SearchClamWithPage) (int64, interface{}, error)
-	Create(req dto.ClamCreate) error
-	Update(req dto.ClamUpdate) error
+	Create(req dto.ClamCreate, operator string) error
+	Update(req dto.ClamUpdate, operator string) error
 	UpdateStatus(id uint, status string) error
 	Delete(req dto.ClamDelete) error
 	HandleOnce(id uint) error
@@ -86,8 +86,9 @@ func (c *ClamService) LoadBaseInfo() (dto.ClamBaseInfo, error) {
 		baseInfo.IsActive = false
 	}
 
+	cmdMgr := cmd.NewCommandMgr(cmd.WithTimeout(20 * time.Second))
 	if baseInfo.IsActive {
-		version, err := cmd.RunDefaultWithStdoutBashC("clamdscan --version")
+		version, err := cmdMgr.RunWithStdout("clamdscan", "--version")
 		if err == nil {
 			if strings.Contains(version, "/") {
 				baseInfo.Version = strings.TrimPrefix(strings.Split(version, "/")[0], "ClamAV ")
@@ -99,7 +100,7 @@ func (c *ClamService) LoadBaseInfo() (dto.ClamBaseInfo, error) {
 		_ = clam.CheckWithStopAll(false, clamRepo)
 	}
 	if baseInfo.FreshIsActive {
-		version, err := cmd.RunDefaultWithStdoutBashC("freshclam --version")
+		version, err := cmdMgr.RunWithStdout("freshclam", "--version")
 		if err == nil {
 			if strings.Contains(version, "/") {
 				baseInfo.FreshVersion = strings.TrimPrefix(strings.Split(version, "/")[0], "ClamAV ")
@@ -164,7 +165,7 @@ func (c *ClamService) SearchWithPage(req dto.SearchClamWithPage) (int64, interfa
 	return total, datas, err
 }
 
-func (c *ClamService) Create(req dto.ClamCreate) error {
+func (c *ClamService) Create(req dto.ClamCreate, operator string) error {
 	clam, _ := clamRepo.Get(repo.WithByName(req.Name))
 	if clam.ID != 0 {
 		return buserr.New("ErrRecordExist")
@@ -179,7 +180,7 @@ func (c *ClamService) Create(req dto.ClamCreate) error {
 		clam.InfectedDir = ""
 	}
 	if len(req.Spec) != 0 {
-		entryID, err := xpack.StartClam(&clam, false)
+		entryID, err := xpack.MultiNodeProvider.StartClam(&clam, false)
 		if err != nil {
 			return err
 		}
@@ -198,7 +199,7 @@ func (c *ClamService) Create(req dto.ClamCreate) error {
 			Project:   strconv.Itoa(int(clam.ID)),
 			Status:    constant.AlertEnable,
 		}
-		err := NewIAlertService().CreateAlert(createAlert)
+		err := NewIAlertService().CreateAlert(createAlert, operator)
 		if err != nil {
 			return err
 		}
@@ -206,7 +207,7 @@ func (c *ClamService) Create(req dto.ClamCreate) error {
 	return nil
 }
 
-func (c *ClamService) Update(req dto.ClamUpdate) error {
+func (c *ClamService) Update(req dto.ClamUpdate, operator string) error {
 	if cmd.CheckIllegal(req.Path) {
 		return buserr.New("ErrCmdIllegal")
 	}
@@ -232,7 +233,7 @@ func (c *ClamService) Update(req dto.ClamUpdate) error {
 		upMap["entry_id"] = 0
 	}
 	if len(req.Spec) != 0 && clam.Status != constant.StatusDisable {
-		newEntryID, err := xpack.StartClam(&clamItem, true)
+		newEntryID, err := xpack.MultiNodeProvider.StartClam(&clamItem, true)
 		if err != nil {
 			return err
 		}
@@ -259,7 +260,7 @@ func (c *ClamService) Update(req dto.ClamUpdate) error {
 		Type:      "clams",
 		Project:   strconv.Itoa(int(clam.ID)),
 	}
-	err := NewIAlertService().ExternalUpdateAlert(updateAlert)
+	err := NewIAlertService().ExternalUpdateAlert(updateAlert, operator)
 	if err != nil {
 		return err
 	}
@@ -276,7 +277,7 @@ func (c *ClamService) UpdateStatus(id uint, status string) error {
 		err     error
 	)
 	if status == constant.StatusEnable {
-		entryID, err = xpack.StartClam(&clam, true)
+		entryID, err = xpack.MultiNodeProvider.StartClam(&clam, true)
 		if err != nil {
 			return err
 		}
@@ -493,7 +494,7 @@ func (c *ClamService) loadConfigPath(confType string) string {
 
 func handleAlert(infectedFiles, clamName string, clamId uint) {
 	itemInfected, _ := strconv.Atoi(strings.TrimSpace(infectedFiles))
-	if itemInfected < 0 {
+	if itemInfected <= 0 {
 		return
 	}
 	pushAlert := dto.PushAlert{

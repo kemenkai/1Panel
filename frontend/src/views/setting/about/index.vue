@@ -5,7 +5,7 @@
                 <div style="text-align: center; margin-top: 20px">
                     <div style="justify-self: center" class="logo">
                         <img
-                            v-if="globalStore.themeConfig.logo && !logoLoadFailed"
+                            v-if="themeConfig.logo && !logoLoadFailed"
                             style="width: 80px"
                             :src="`/api/v2/images/logo?t=${Date.now()}`"
                             @error="logoLoadFailed = true"
@@ -13,7 +13,7 @@
                         />
                         <PrimaryLogo v-else />
                     </div>
-                    <h3 class="description">{{ globalStore.themeConfig.title || $t(descriptionKey) }}</h3>
+                    <h3 class="description">{{ themeConfig.title || $t(descriptionKey) }}</h3>
                     <div class="flex justify-center">
                         <SystemUpgrade class="upgrade" />
                     </div>
@@ -46,11 +46,9 @@ import { getSystemAvailable } from '@/api/modules/setting';
 import { loadOsInfo } from '@/api/modules/dashboard';
 import { computed, onMounted, ref } from 'vue';
 import SystemUpgrade from '@/components/system-upgrade/index.vue';
-import { GlobalStore } from '@/store';
+import { useGlobalStore } from '@/composables/useGlobalStore';
 import PrimaryLogo from '@/assets/images/1panel-logo.svg?component';
-import { storeToRefs } from 'pinia';
-const globalStore = GlobalStore();
-const { docsUrl } = storeToRefs(globalStore);
+const { docsUrl, themeConfig } = useGlobalStore();
 const loading = ref();
 const logoLoadFailed = ref(false);
 const isWindows = ref(false);

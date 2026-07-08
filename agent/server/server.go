@@ -12,7 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/1Panel-dev/1Panel/agent/app/repo"
-	"github.com/1Panel-dev/1Panel/agent/constant"
 	"github.com/1Panel-dev/1Panel/agent/cron"
 	"github.com/1Panel-dev/1Panel/agent/global"
 	"github.com/1Panel-dev/1Panel/agent/i18n"
@@ -39,19 +38,32 @@ func Start() {
 	viper.Init()
 	dir.Init()
 	log.Init()
+	global.LOG.Info("agent startup: logger initialized")
 	db.Init()
+	global.LOG.Info("agent startup: database initialized")
 	migration.Init()
+	global.LOG.Info("agent startup: migration initialized")
 	i18n.Init()
+	global.LOG.Info("agent startup: i18n initialized")
 	cache.Init()
+	global.LOG.Info("agent startup: cache initialized")
 	app.Init()
+	global.LOG.Info("agent startup: app initialized")
 	lang.Init()
+	global.LOG.Info("agent startup: language initialized")
 	validator.Init()
+	global.LOG.Info("agent startup: validator initialized")
 	cron.Run()
+	global.LOG.Info("agent startup: cron initialized")
 	hook.Init()
+	global.LOG.Info("agent startup: hook initialized")
 	go firewall.Init()
+	global.LOG.Info("agent startup: firewall init scheduled")
 	InitOthers()
+	global.LOG.Info("agent startup: edition initialized")
 
 	rootRouter := router.Routers()
+	global.LOG.Info("agent startup: router initialized")
 
 	server := &http.Server{
 		Handler: rootRouter,
@@ -65,13 +77,23 @@ func Start() {
 
 	if global.IsMaster {
 		if platform.UseLocalAgentSocket() {
-			_ = os.Remove(platform.LocalAgentSockPath)
-			_ = os.MkdirAll(filepath.Dir(platform.LocalAgentSockPath), constant.DirPerm)
-			listener, err := net.Listen("unix", platform.LocalAgentSockPath)
+			sockPath := platform.LocalAgentSockPath
+			global.LOG.Infof("agent startup: master mode, preparing unix socket %s", sockPath)
+			if err := prepareMasterSocketDir(filepath.Dir(sockPath)); err != nil {
+				panic(err)
+			}
+			_ = os.Remove(sockPath)
+			listener, err := net.Listen("unix", sockPath)
 			if err != nil {
 				panic(err)
 			}
+			if err := secureMasterSocket(sockPath); err != nil {
+				_ = listener.Close()
+				panic(err)
+			}
+			global.LOG.Infof("agent startup: listening on unix socket %s", sockPath)
 			business.Init()
+			global.LOG.Info("agent startup: business initialized")
 			_ = server.Serve(listener)
 			return
 		}
@@ -85,6 +107,7 @@ func Start() {
 		return
 	} else {
 		server.Addr = fmt.Sprintf("0.0.0.0:%s", global.CONF.Base.Port)
+		global.LOG.Infof("agent startup: node mode, preparing https listener %s", server.Addr)
 		settingRepo := repo.NewISettingRepo()
 		certItem, err := settingRepo.Get(settingRepo.WithByKey("ServerCrt"))
 		if err != nil {
@@ -114,6 +137,7 @@ func Start() {
 			server.TLSConfig.ClientCAs = caCertPool
 		}
 		business.Init()
+		global.LOG.Info("agent startup: business initialized")
 		global.LOG.Infof("listen at https://0.0.0.0:%s", global.CONF.Base.Port)
 		if err := server.ListenAndServeTLS("", ""); err != nil {
 			panic(err)

@@ -7,16 +7,21 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
+	"github.com/1Panel-dev/1Panel/core/cmd/server/conf"
 	"github.com/1Panel-dev/1Panel/core/constant"
 	"github.com/1Panel-dev/1Panel/core/global"
 	"github.com/1Panel-dev/1Panel/core/i18n"
 	"github.com/1Panel-dev/1Panel/core/utils/cmd"
 	"github.com/1Panel-dev/1Panel/core/utils/common"
 	"github.com/1Panel-dev/1Panel/core/utils/encrypt"
+	upgradeUtil "github.com/1Panel-dev/1Panel/core/utils/upgrade"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
+	"gopkg.in/yaml.v3"
+	"gorm.io/gorm"
 )
 
 func init() {
@@ -27,11 +32,16 @@ func init() {
 
 	RootCmd.AddCommand(updateCmd)
 	updateCmd.AddCommand(updateUserName)
+	updateUserName.Flags().StringVar(&updateUserNameFlag, "username", "", "username")
 	updateCmd.AddCommand(updatePassword)
+	updatePassword.Flags().StringVar(&updatePasswordUserName, "username", "", "username")
 	updateCmd.AddCommand(updatePort)
 
 	updateCmd.AddCommand(updateVersion)
 }
+
+var updateUserNameFlag string
+var updatePasswordUserName string
 
 var updateCmd = &cobra.Command{
 	Use: "update",
@@ -51,6 +61,10 @@ var updateUserName = &cobra.Command{
 			fmt.Println(i18n.GetMsgWithMapForCmd("SudoHelper", map[string]interface{}{"cmd": "sudo 1pctl update username"}))
 			return nil
 		}
+		if isEnterprise() && len(strings.TrimSpace(updateUserNameFlag)) == 0 {
+			fmt.Println(i18n.GetMsgByKeyForCmd("UsernameNeed"))
+			return nil
+		}
 		username()
 		return nil
 	},
@@ -64,10 +78,58 @@ var updatePassword = &cobra.Command{
 			fmt.Println(i18n.GetMsgWithMapForCmd("SudoHelper", map[string]interface{}{"cmd": "sudo 1pctl update password"}))
 			return nil
 		}
+		if isEnterprise() && len(strings.TrimSpace(updatePasswordUserName)) == 0 {
+			fmt.Println(i18n.GetMsgByKeyForCmd("UsernameNeed"))
+			return nil
+		}
 		password()
 		return nil
 	},
 }
+
+type serverConfig struct {
+	Base struct {
+		IsEnterprise bool `yaml:"is_enterprise"`
+	} `yaml:"base"`
+}
+
+type Node struct {
+	Name          string `gorm:"column:name"`
+	Addr          string `gorm:"column:addr"`
+	IsAutoUpgrade bool   `gorm:"column:is_auto_upgrade"`
+	Status        string `gorm:"column:status"`
+}
+
+func isEnterprise() bool {
+	var config serverConfig
+	if err := yaml.Unmarshal(conf.AppYaml, &config); err != nil {
+		return false
+	}
+	return config.Base.IsEnterprise
+}
+
+func updateEnterprisePassword(db *gorm.DB, username, password string) error {
+	result := db.Exec("UPDATE users SET password = ? WHERE name = ?", password, username)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("user %s not found", username)
+	}
+	return nil
+}
+
+func updateEnterpriseUserName(db *gorm.DB, username, newUsername string) error {
+	result := db.Exec("UPDATE users SET name = ? WHERE name = ?", newUsername, username)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("user %s not found", username)
+	}
+	return nil
+}
+
 var updatePort = &cobra.Command{
 	Use:   "port",
 	Short: i18n.GetMsgByKeyForCmd("UpdatePort"),
@@ -104,8 +166,42 @@ var updateVersion = &cobra.Command{
 			fmt.Println(i18n.GetMsgWithMapForCmd("UpdateUserErr", map[string]interface{}{"err": err.Error()}))
 			return err
 		}
+		defer dropUpgradeBackupCopies(db)
+
+		xpackDB, err := loadDBConn("xpack.db")
+		if err != nil {
+			return nil
+		}
+		var nodes []Node
+		if err := xpackDB.Where("is_auto_upgrade = ? AND name != ?", true, "local").Find(&nodes).Error; err != nil {
+			fmt.Println(i18n.GetMsgWithMapForCmd("LoadAutoUpgradeNodesFailed", map[string]interface{}{"err": err.Error()}))
+		}
+		var nodeNames []string
+		for _, item := range nodes {
+			nodeNames = append(nodeNames, fmt.Sprintf("%s-%s", item.Name, item.Addr))
+		}
+		if len(nodeNames) > 0 {
+			fmt.Printf("[%s] %s\n", time.Now().Format("2006-01-02 15:04:05"), i18n.GetMsgWithMapForCmd("AutoUpgradeNodes", map[string]interface{}{"nodes": strings.Join(nodeNames, ", ")}))
+		}
+		if err := xpackDB.Model(&Node{}).
+			Where("is_auto_upgrade = ? AND name != ?", true, "local").
+			Updates(map[string]interface{}{"status": constant.StatusWaitForUpgrade}).
+			Error; err != nil {
+			fmt.Println(i18n.GetMsgWithMapForCmd("UpdateAutoUpgradeNodesStatusFailed", map[string]interface{}{"err": err.Error()}))
+		}
 		return nil
 	},
+}
+
+func dropUpgradeBackupCopies(db *gorm.DB) {
+	baseDir, err := loadBaseDir()
+	if err != nil {
+		fmt.Println(err.Error())
+		return
+	}
+	if err := upgradeUtil.DropBackupCopies(baseDir, getSettingByKey(db, "UpgradeBackupCopies")); err != nil {
+		fmt.Printf("read upgrade dir failed, err: %v\n", err)
+	}
 }
 
 func username() {
@@ -132,7 +228,17 @@ func username() {
 		fmt.Println(i18n.GetMsgWithMapForCmd("DBConnErr", map[string]interface{}{"err": err.Error()}))
 		return
 	}
-	if err := setSettingByKey(db, "UserName", newUsername); err != nil {
+	if isEnterprise() {
+		enterpriseDB, err := loadDBConn("enterprise.db")
+		if err != nil {
+			fmt.Println(i18n.GetMsgWithMapForCmd("DBConnErr", map[string]interface{}{"err": err.Error()}))
+			return
+		}
+		if err := updateEnterpriseUserName(enterpriseDB, strings.TrimSpace(updateUserNameFlag), newUsername); err != nil {
+			fmt.Println(i18n.GetMsgWithMapForCmd("UpdateUserErr", map[string]interface{}{"err": err.Error()}))
+			return
+		}
+	} else if err := setSettingByKey(db, "UserName", newUsername); err != nil {
 		fmt.Println(i18n.GetMsgWithMapForCmd("UpdateUserErr", map[string]interface{}{"err": err.Error()}))
 		return
 	}
@@ -198,11 +304,26 @@ func password() {
 	} else {
 		p = newPassword
 	}
-	if err := setSettingByKey(db, "Password", p); err != nil {
-		fmt.Println("\n", i18n.GetMsgWithMapForCmd("UpdatePortErr", map[string]interface{}{"err": err.Error()}))
+	if isEnterprise() {
+		enterpriseDB, err := loadDBConn("enterprise.db")
+		if err != nil {
+			fmt.Println("\n" + i18n.GetMsgWithMapForCmd("DBConnErr", map[string]interface{}{"err": err.Error()}))
+			return
+		}
+		if err := updateEnterprisePassword(enterpriseDB, strings.TrimSpace(updatePasswordUserName), p); err != nil {
+			fmt.Println("\n", i18n.GetMsgWithMapForCmd("UpdatePasswordErr", map[string]interface{}{"err": err.Error()}))
+			return
+		}
+	} else if err := setSettingByKey(db, "Password", p); err != nil {
+		fmt.Println("\n", i18n.GetMsgWithMapForCmd("UpdatePasswordErr", map[string]interface{}{"err": err.Error()}))
 		return
 	}
-	username := getSettingByKey(db, "UserName")
+	username := ""
+	if isEnterprise() {
+		username = strings.TrimSpace(updatePasswordUserName)
+	} else {
+		username = getSettingByKey(db, "UserName")
+	}
 
 	fmt.Println("\n" + i18n.GetMsgByKeyForCmd("UpdateSuccessful"))
 	fmt.Println(i18n.GetMsgWithMapForCmd("UpdateUserResult", map[string]interface{}{"name": username}))
@@ -237,7 +358,7 @@ func port() {
 	fmt.Println("\n" + i18n.GetMsgByKeyForCmd("UpdateSuccessful"))
 	fmt.Println(i18n.GetMsgWithMapForCmd("UpdatePortResult", map[string]interface{}{"name": newPortStr}))
 
-	std, err := cmd.RunDefaultWithStdoutBashC("1pctl restart core")
+	std, err := cmd.NewCommandMgr().RunWithStdout("1pctl", "restart", "core")
 	if err != nil {
 		fmt.Println(std)
 	}

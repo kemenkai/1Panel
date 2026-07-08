@@ -10,6 +10,7 @@ import (
 func Init() {
 	InitAgentDB()
 	InitTaskDB()
+	InitAlertDB()
 	global.LOG.Info("Migration run successfully")
 }
 
@@ -74,6 +75,7 @@ func InitAgentDB() {
 		migrations.NormalizeAgentAccountVerifiedStatus,
 		migrations.NormalizeOllamaAccountAPIType,
 		migrations.InitAgentAccountModelPool,
+		migrations.AddAgentAccountMasterID,
 		migrations.AddHostTable,
 		migrations.AddAITerminalSettings,
 		migrations.UpdateAgentQuickJumpTitle,
@@ -83,6 +85,8 @@ func InitAgentDB() {
 		migrations.AddFileManageAISettings,
 		migrations.AddFileShareTable,
 		migrations.AddFileHistoryTable,
+		migrations.MigrateLegoV5,
+		migrations.InitFirewallPortWhiteList,
 		migrations.UpdateWindowsDockerDefaults,
 		migrations.AddWindowsServiceTable,
 	})
@@ -95,6 +99,18 @@ func InitAgentDB() {
 func InitTaskDB() {
 	m := gormigrate.New(global.TaskDB, gormigrate.DefaultOptions, []*gormigrate.Migration{
 		migrations.AddTaskTable,
+	})
+	if err := m.Migrate(); err != nil {
+		global.LOG.Error(err)
+		panic(err)
+	}
+}
+
+func InitAlertDB() {
+	m := gormigrate.New(global.AlertDB, gormigrate.DefaultOptions, []*gormigrate.Migration{
+		migrations.MigrateAlertMethodConfigIDs,
+		migrations.MigrateAlertLogTaskMethodConfigIDs,
+		migrations.AddAlertAuditUser,
 	})
 	if err := m.Migrate(); err != nil {
 		global.LOG.Error(err)

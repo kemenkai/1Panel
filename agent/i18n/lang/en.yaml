@@ -6,12 +6,15 @@ ErrFileAINotEnabled: 'File-management AI summary requires an enabled AI account 
 ErrFileAISearchBadPattern: 'Invalid file search pattern (regex or whole word): {{ .detail }}'
 ErrWgetRemoteFailed: 'Remote download failed or URL is unreachable: {{ .detail }}'
 ErrWgetInvalidContentType: 'Remote URL did not return a file (possibly an error page), {{ .detail }}'
+ErrWgetProxyNotConfigured: 'Configure a proxy server in panel settings first'
+ErrWgetProxyInvalid: 'Invalid proxy server address: {{ .detail }}'
 ErrRecordExist: 'Record already exists'
 ErrRecordNotFound: 'Record not found'
 ErrStructTransform: 'Type conversion failed: {{ .err }}'
 ErrNotLogin: 'Not logged in: {{ .detail }}'
 ErrPasswordExpired: 'Password expired: {{ .detail }}'
 ErrNotSupportType: 'Unsupported type: {{ .name }}'
+ErrAlertMethodNotSupported: 'This version does not support this alert method'
 ErrProxy: 'Request failed: {{ .detail }}'
 ErrApiConfigStatusInvalid: 'API access disabled: {{ .detail }}'
 ErrApiConfigKeyInvalid: 'Invalid API key: {{ .detail }}'
@@ -74,6 +77,8 @@ ErrBackupInUsed: 'Backup account is in use by a scheduled task'
 ErrBackupCheck: 'Backup account connectivity test failed: {{ .err }}'
 ErrBackupLocalDelete: 'Local backup accounts cannot be deleted'
 ErrBackupLocalCreate: 'Local backup accounts cannot be created'
+ErrAlertConfigInUse: 'Alert configuration is in use and cannot be deleted'
+ErrAlertConfigPhoneExist: 'Phone number already exists'
 
 #app
 ErrPortInUsed: '{{ .detail }} port is already occupied!'
@@ -139,6 +144,7 @@ ExportDate: "Time"
 
 #file
 ErrFileCanNotRead: 'File preview is not supported'
+ErrSensitiveFileRead: 'Reading sensitive files is not allowed'
 ErrFileToLarge: 'File is larger than 10 MB'
 ErrPathNotFound: 'Directory does not exist'
 ErrMovePathFailed: 'Target path cannot include source path'
@@ -471,6 +477,7 @@ TaskScan: "Scan"
 # task - ai
 OllamaModelPull: 'Pull Ollama model {{ .name }}'
 OllamaModelSize: 'Get Ollama model size: {{ .name }}'
+AIBenchmarkRun: 'Run AI benchmark'
 
 # task-snapshot
 Snapshot: 'Snapshot'
@@ -593,3 +600,13 @@ TerminalAIThinking: 'AI is thinking...'
 TerminalAIReadyToExecute: 'Thinking complete, press Enter to execute (duration: {{ .duration }}, tokens: {{ .tokens }})'
 TerminalAIRequestFailed: 'AI request failed: {{ .err }}'
 FileAISearchEmptyDir: 'No files or directories found under this path (or all entries were filtered).'
+
+# ai proxy
+ErrAIProxyServiceNotInstalled: '{{ .name }} service is not installed'
+ErrAIProxyModelAccountNotFound: 'Model account {{ .id }} not found'
+ErrAIProxyModelMapRequired: 'This field is required.'
+ErrAIProxyModelMapInvalid: 'Model mapping must be a valid JSON object: {{ .err }}'
+ErrAIProxyModelMapEmpty: 'Model mapping cannot be empty'
+ErrAIProxyModelMapEmptyExternalModel: 'Model mapping contains an empty request model'
+ErrAIProxyModelMapEmptyUpstreamModel: 'Upstream model for {{ .model }} cannot be empty'
+AIProxyUserFallback: 'User {{ .id }}'

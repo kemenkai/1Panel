@@ -32,27 +32,6 @@ func (b *BaseApi) LoadMonitor(c *gin.Context) {
 }
 
 // @Tags Monitor
-// @Summary Load monitor data
-// @Param request body dto.MonitorGPUSearch true "request"
-// @Success 200 {object} dto.MonitorGPUData
-// @Security ApiKeyAuth
-// @Security Timestamp
-// @Router /hosts/monitor/gpu/search [post]
-func (b *BaseApi) LoadGPUMonitor(c *gin.Context) {
-	var req dto.MonitorGPUSearch
-	if err := helper.CheckBindAndValidate(&req, c); err != nil {
-		return
-	}
-
-	data, err := monitorService.LoadGPUMonitorData(req)
-	if err != nil {
-		helper.InternalServer(c, err)
-		return
-	}
-	helper.SuccessWithData(c, data)
-}
-
-// @Tags Monitor
 // @Summary Clean monitor data
 // @Success 200
 // @Security ApiKeyAuth
@@ -91,7 +70,7 @@ func (b *BaseApi) LoadMonitorSetting(c *gin.Context) {
 // @Security ApiKeyAuth
 // @Security Timestamp
 // @Router /hosts/monitor/setting/update [post]
-// @x-panel-log {"bodyKeys":["key", "value"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"修改默认监控网卡 [name]-[value]","formatEN":"update default monitor [name]-[value]"}
+// @x-panel-log {"bodyKeys":["key", "value"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"修改默认监控网卡 [key]-[value]","formatEN":"update default monitor [key]-[value]"}
 func (b *BaseApi) UpdateMonitorSetting(c *gin.Context) {
 	var req dto.MonitorSettingUpdate
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
@@ -105,6 +84,12 @@ func (b *BaseApi) UpdateMonitorSetting(c *gin.Context) {
 	helper.Success(c)
 }
 
+// @Tags Monitor
+// @Summary Get network options
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /hosts/monitor/netoptions [get]
 func (b *BaseApi) GetNetworkOptions(c *gin.Context) {
 	netStat, _ := net.IOCounters(true)
 	var options []string
@@ -116,6 +101,12 @@ func (b *BaseApi) GetNetworkOptions(c *gin.Context) {
 	helper.SuccessWithData(c, options)
 }
 
+// @Tags Monitor
+// @Summary Get IO options
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /hosts/monitor/iooptions [get]
 func (b *BaseApi) GetIOOptions(c *gin.Context) {
 	diskStat, _ := disk.IOCounters()
 	var options []string
@@ -125,8 +116,4 @@ func (b *BaseApi) GetIOOptions(c *gin.Context) {
 	}
 	sort.Strings(options)
 	helper.SuccessWithData(c, options)
-}
-
-func (b *BaseApi) GetCPUOptions(c *gin.Context) {
-	helper.SuccessWithData(c, monitorService.LoadGPUOptions())
 }

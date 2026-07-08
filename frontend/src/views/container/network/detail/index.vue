@@ -40,7 +40,7 @@
                         {{ networkData?.IPAM?.Driver || '-' }}
                     </el-descriptions-item>
                     <el-descriptions-item
-                        v-for="(config, index) in networkData?.IPAM?.Config"
+                        v-for="(config, index) in ((networkData?.IPAM?.Config ?? []) as any[])"
                         :key="index"
                         :label="$t('container.subnet') + (index > 0 ? ' ' + (index + 1) : '')"
                     >

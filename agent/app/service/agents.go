@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -16,6 +17,7 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/app/model"
 	providercatalog "github.com/1Panel-dev/1Panel/agent/app/provider"
 	"github.com/1Panel-dev/1Panel/agent/app/repo"
+	"github.com/1Panel-dev/1Panel/agent/app/task"
 	"github.com/1Panel-dev/1Panel/agent/buserr"
 	"github.com/1Panel-dev/1Panel/agent/constant"
 	"github.com/1Panel-dev/1Panel/agent/global"
@@ -30,6 +32,10 @@ import (
 
 type IAgentService interface {
 	Create(req dto.AgentCreateReq) (*dto.AgentItem, error)
+	BatchInstall(req dto.AgentBatchInstallReq) (*dto.AgentItem, error)
+	BatchUpgrade(req dto.AgentBatchUpgradeReq) ([]dto.AgentBatchUpgradeResult, error)
+	BatchInstallSkill(req dto.AgentBatchSkillInstallReq) ([]dto.AgentBatchSkillInstallResult, error)
+	BatchOperate(req dto.AgentBatchOperateReq) ([]dto.AgentBatchOperateResult, error)
 	Page(req dto.SearchWithPage) (int64, []dto.AgentItem, error)
 	DeleteCheck(req dto.AgentIDReq) ([]dto.AppResource, error)
 	Delete(req dto.AgentDeleteReq) error
@@ -69,6 +75,7 @@ type IAgentService interface {
 	UpdateAccount(req dto.AgentAccountUpdateReq) error
 	SyncAgentsByAccount(account *model.AgentAccount) error
 	PageAccounts(req dto.AgentAccountSearch) (int64, []dto.AgentAccountInfo, error)
+	CountAccountsByProviders(req dto.AgentAccountProviderCountReq) (map[string]int64, error)
 	GetAccountModels(req dto.AgentAccountModelReq) ([]dto.AgentAccountModel, error)
 	CreateAccountModel(req dto.AgentAccountModelCreateReq) error
 	UpdateAccountModel(req dto.AgentAccountModelUpdateReq) error
@@ -96,6 +103,16 @@ type IAgentService interface {
 	UninstallPlugin(req dto.AgentPluginUninstallReq) error
 	CheckPlugin(req dto.AgentPluginCheckReq) (*dto.AgentPluginStatus, error)
 	ApproveChannelPairing(req dto.AgentChannelPairingApproveReq) error
+}
+
+type batchUpgradePlan struct {
+	ctx batchAgentInstallContext
+	req request.AppInstallUpgrade
+}
+
+type batchAgentInstallContext struct {
+	agent   model.Agent
+	install model.AppInstall
 }
 
 const (
@@ -127,7 +144,7 @@ func (a AgentService) Create(req dto.AgentCreateReq) (*dto.AgentItem, error) {
 	if installs, _ := appInstallRepo.ListBy(context.Background(), repo.WithByLowerName(req.Name)); len(installs) > 0 {
 		return nil, buserr.New("ErrNameIsExist")
 	}
-	if !xpack.IsXpack() {
+	if !xpack.MultiNodeProvider.IsXpack() {
 		count, _, err := agentRepo.Page(1, 1)
 		if err != nil {
 			return nil, err
@@ -288,6 +305,431 @@ func (a AgentService) Create(req dto.AgentCreateReq) (*dto.AgentItem, error) {
 
 	item := buildAgentItem(agent, appInstall, nil)
 	return &item, nil
+}
+
+func (a AgentService) BatchInstall(req dto.AgentBatchInstallReq) (*dto.AgentItem, error) {
+	accountID, err := a.ensureBatchInstallAccount(req)
+	if err != nil {
+		return nil, err
+	}
+	createReq := buildCreateReqFromBatchInstallReq(req)
+	createReq.AccountID = accountID
+	if strings.TrimSpace(createReq.Name) == "" {
+		name, err := buildBatchInstallAgentName(createReq.AgentType)
+		if err != nil {
+			return nil, err
+		}
+		createReq.Name = name
+	}
+	if createReq.AgentType == constant.AppOpenclaw && len(createReq.AllowedOrigins) == 0 {
+		allowedOrigin, err := buildBatchInstallOpenclawAllowedOrigin(req)
+		if err != nil {
+			return nil, err
+		}
+		createReq.AllowedOrigins = []string{allowedOrigin}
+	}
+	return a.Create(createReq)
+}
+
+func (a AgentService) BatchUpgrade(req dto.AgentBatchUpgradeReq) ([]dto.AgentBatchUpgradeResult, error) {
+	plans, results, err := buildBatchUpgradePlans(req)
+	if err != nil {
+		return nil, err
+	}
+	for _, plan := range plans {
+		result := dto.AgentBatchUpgradeResult{
+			AgentID:      plan.ctx.agent.ID,
+			AgentName:    plan.ctx.agent.Name,
+			AppInstallID: plan.ctx.agent.AppInstallID,
+		}
+		if err := upgradeInstall(plan.req); err != nil {
+			result.Message = err.Error()
+		} else {
+			result.Success = true
+		}
+		results = append(results, result)
+	}
+	return results, nil
+}
+
+func (a AgentService) BatchInstallSkill(req dto.AgentBatchSkillInstallReq) ([]dto.AgentBatchSkillInstallResult, error) {
+	if req.AgentType != constant.AppOpenclaw && req.AgentType != constant.AppHermesAgent {
+		return nil, fmt.Errorf("%s does not support skill batch install", req.AgentType)
+	}
+	packagePath, err := validateLocalSkillPackagePath(req.PackagePath)
+	if err != nil {
+		return nil, err
+	}
+	if format, err := localSkillPackageFormat(packagePath); err != nil {
+		return nil, err
+	} else if format != "zip" {
+		return nil, fmt.Errorf("only .zip skill packages can be installed")
+	}
+	skillName := sanitizeLocalSkillDirName(req.SkillName, packagePath, req.SkillName)
+	agents, err := listBatchAgents(req.AgentType)
+	if err != nil {
+		return nil, err
+	}
+	results := make([]dto.AgentBatchSkillInstallResult, 0, len(agents))
+	for _, agent := range agents {
+		result := dto.AgentBatchSkillInstallResult{
+			AgentID:      agent.ID,
+			AgentName:    agent.Name,
+			AppInstallID: agent.AppInstallID,
+		}
+		ctx, message := loadBatchAgentInstall(agent, req.AgentType)
+		if message != "" {
+			result.Message = message
+			results = append(results, result)
+			continue
+		}
+		install := ctx.install
+		result.AppInstallID = install.ID
+		if install.Status == constant.StatusInstalling || install.Status == constant.StatusUpgrading {
+			result.Message = fmt.Sprintf("agent status is %s", install.Status)
+			results = append(results, result)
+			continue
+		}
+		if err := ensureContainerRunning(install.ContainerName); err != nil {
+			result.Message = err.Error()
+			results = append(results, result)
+			continue
+		}
+		installTask, err := task.NewTaskWithOps(skillName, task.TaskInstall, task.TaskScopeAI, buildBatchSkillInstallTaskID(req.TaskID, agent.ID), agent.ID)
+		if err != nil {
+			result.Message = err.Error()
+			results = append(results, result)
+			continue
+		}
+		currentAgent := ctx.agent
+		currentInstall := ctx.install
+		installTask.AddSubTask("Install local skill", func(t *task.Task) error {
+			mgr := cmd.NewCommandMgr(cmd.WithTask(*t), cmd.WithContext(t.TaskCtx), cmd.WithTimeout(20*time.Minute))
+			return installLocalSkillPackage(mgr, currentInstall.ContainerName, currentAgent.AgentType, currentAgent.ConfigPath, packagePath, skillName)
+		}, nil)
+		go func() {
+			if err := installTask.Execute(); err != nil {
+				global.LOG.Errorf("batch install local skill failed: %v", err)
+			}
+		}()
+		result.Success = true
+		results = append(results, result)
+	}
+	return results, nil
+}
+
+func (a AgentService) BatchOperate(req dto.AgentBatchOperateReq) ([]dto.AgentBatchOperateResult, error) {
+	operate := constant.AppOperate(strings.TrimSpace(req.Operate))
+	if operate != constant.Start && operate != constant.Stop && operate != constant.Restart && operate != constant.Delete {
+		return nil, fmt.Errorf("operate %s is not supported", req.Operate)
+	}
+	agents, err := listBatchAgents(req.AgentType)
+	if err != nil {
+		return nil, err
+	}
+	results := make([]dto.AgentBatchOperateResult, 0, len(agents))
+	for _, agent := range agents {
+		result := dto.AgentBatchOperateResult{
+			AgentID:      agent.ID,
+			AgentName:    agent.Name,
+			AppInstallID: agent.AppInstallID,
+		}
+		if operate == constant.Delete {
+			if err := a.Delete(dto.AgentDeleteReq{
+				ID:          agent.ID,
+				TaskID:      buildBatchOperateTaskID(req.TaskID, agent.ID),
+				ForceDelete: req.ForceDelete,
+			}); err != nil {
+				result.Message = err.Error()
+			} else {
+				result.Success = true
+			}
+			results = append(results, result)
+			continue
+		}
+		ctx, message := loadBatchAgentInstall(agent, req.AgentType)
+		if message != "" {
+			result.Message = message
+			results = append(results, result)
+			continue
+		}
+		install := ctx.install
+		result.AppInstallID = install.ID
+		if message := batchOperateSkipMessage(operate, install.Status); message != "" {
+			result.Success = true
+			result.Skipped = true
+			result.Message = message
+			results = append(results, result)
+			continue
+		}
+		if err := NewIAppInstalledService().Operate(request.AppInstalledOperate{
+			InstallId: install.ID,
+			Operate:   operate,
+			TaskID:    buildBatchOperateTaskID(req.TaskID, agent.ID),
+		}); err != nil {
+			result.Message = err.Error()
+		} else {
+			result.Success = true
+		}
+		results = append(results, result)
+	}
+	return results, nil
+}
+
+func listBatchAgents(agentType string) ([]model.Agent, error) {
+	return agentRepo.List(func(db *gorm.DB) *gorm.DB {
+		return db.Where("agent_type = ?", agentType).Order("id ASC")
+	})
+}
+
+func loadBatchAgentInstall(agent model.Agent, agentType string) (batchAgentInstallContext, string) {
+	ctx := batchAgentInstallContext{agent: agent}
+	if agent.AppInstallID == 0 {
+		return ctx, "agent app install id is empty"
+	}
+	install, err := appInstallRepo.GetFirst(repo.WithByID(agent.AppInstallID))
+	if err != nil {
+		return ctx, err.Error()
+	}
+	ctx.install = install
+	if install.App.Key != agentType {
+		return ctx, fmt.Sprintf("app key %s does not match agent type %s", install.App.Key, agentType)
+	}
+	return ctx, ""
+}
+
+func buildBatchUpgradePlans(req dto.AgentBatchUpgradeReq) ([]batchUpgradePlan, []dto.AgentBatchUpgradeResult, error) {
+	agents, err := listBatchAgents(req.AgentType)
+	if err != nil {
+		return nil, nil, err
+	}
+	plans := make([]batchUpgradePlan, 0, len(agents))
+	results := make([]dto.AgentBatchUpgradeResult, 0)
+	for _, agent := range agents {
+		result := dto.AgentBatchUpgradeResult{
+			AgentID:      agent.ID,
+			AgentName:    agent.Name,
+			AppInstallID: agent.AppInstallID,
+		}
+		ctx, message := loadBatchAgentInstall(agent, req.AgentType)
+		if message != "" {
+			result.Message = message
+			results = append(results, result)
+			continue
+		}
+		install := ctx.install
+		result.AppInstallID = install.ID
+		if install.Status == constant.StatusInstalling || install.Status == constant.StatusUpgrading {
+			result.Message = fmt.Sprintf("agent status is %s", install.Status)
+			results = append(results, result)
+			continue
+		}
+		if install.Version == req.TargetVersion {
+			result.Success = true
+			result.Skipped = true
+			result.Message = "already target version"
+			results = append(results, result)
+			continue
+		}
+		detail, err := appDetailRepo.GetFirst(appDetailRepo.WithAppId(install.AppId), appDetailRepo.WithVersion(req.TargetVersion))
+		if err != nil {
+			result.Message = err.Error()
+			results = append(results, result)
+			continue
+		}
+		if detail.ID == 0 {
+			result.Message = fmt.Sprintf("target version %s not found", req.TargetVersion)
+			results = append(results, result)
+			continue
+		}
+		plans = append(plans, batchUpgradePlan{
+			ctx: ctx,
+			req: request.AppInstallUpgrade{
+				InstallID: install.ID,
+				DetailID:  detail.ID,
+				Backup:    req.Backup,
+				PullImage: req.PullImage,
+				TaskID:    buildBatchUpgradeTaskID(req.TaskID, install.ID),
+			},
+		})
+	}
+	return plans, results, nil
+}
+
+func buildBatchUpgradeTaskID(taskID string, appInstallID uint) string {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		taskID = fmt.Sprintf("batch-upgrade-%d-%d", appInstallID, time.Now().UnixNano())
+	}
+	return fmt.Sprintf("%s-%d", taskID, appInstallID)
+}
+
+func buildBatchSkillInstallTaskID(taskID string, agentID uint) string {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		taskID = fmt.Sprintf("batch-skill-install-%d-%d", agentID, time.Now().UnixNano())
+	}
+	return fmt.Sprintf("%s-%d", taskID, agentID)
+}
+
+func buildBatchOperateTaskID(taskID string, agentID uint) string {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		taskID = fmt.Sprintf("batch-operate-%d-%d", agentID, time.Now().UnixNano())
+	}
+	return fmt.Sprintf("%s-%d", taskID, agentID)
+}
+
+func batchOperateSkipMessage(operate constant.AppOperate, status string) string {
+	switch status {
+	case constant.StatusInstalling, constant.StatusUpgrading, constant.StatusUninstalling, constant.StatusRebuilding:
+		return fmt.Sprintf("agent status is %s", status)
+	}
+	switch operate {
+	case constant.Start:
+		if status == constant.StatusRunning || status == constant.StatusStarting || status == constant.StatusRestarting {
+			return fmt.Sprintf("agent status is %s", status)
+		}
+	case constant.Stop:
+		if status != constant.StatusRunning {
+			return fmt.Sprintf("agent status is %s", status)
+		}
+	case constant.Restart:
+		if status == constant.StatusStarting {
+			return fmt.Sprintf("agent status is %s", status)
+		}
+	}
+	return ""
+}
+
+func buildCreateReqFromBatchInstallReq(req dto.AgentBatchInstallReq) dto.AgentCreateReq {
+	return dto.AgentCreateReq{
+		Name:           req.Name,
+		Remark:         req.Remark,
+		AppVersion:     req.AppVersion,
+		WebUIPort:      req.WebUIPort,
+		BridgePort:     req.BridgePort,
+		AllowedOrigins: req.AllowedOrigins,
+		AgentType:      req.AgentType,
+		Model:          req.Model,
+		AccountID:      req.AccountID,
+		Token:          req.Token,
+		TaskID:         req.TaskID,
+		Advanced:       req.Advanced,
+		ContainerName:  req.ContainerName,
+		AllowPort:      req.AllowPort,
+		SpecifyIP:      req.SpecifyIP,
+		RestartPolicy:  req.RestartPolicy,
+		CpuQuota:       req.CpuQuota,
+		MemoryLimit:    req.MemoryLimit,
+		MemoryUnit:     req.MemoryUnit,
+		PullImage:      req.PullImage,
+		EditCompose:    req.EditCompose,
+		DockerCompose:  req.DockerCompose,
+	}
+}
+
+func buildBatchInstallAgentName(agentType string) (string, error) {
+	prefix := strings.ToLower(strings.TrimSpace(agentType))
+	if prefix == "" {
+		prefix = "agent"
+	}
+	for i := 1; i <= 10000; i++ {
+		name := fmt.Sprintf("%s-%d", prefix, i)
+		exists, err := agentNameExists(name)
+		if err != nil {
+			return "", err
+		}
+		if !exists {
+			return name, nil
+		}
+	}
+	return "", fmt.Errorf("no available agent name")
+}
+
+func agentNameExists(name string) (bool, error) {
+	if exist, err := agentRepo.GetFirst(repo.WithByLowerName(name)); err == nil && exist != nil && exist.ID > 0 {
+		return true, nil
+	} else if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, err
+	}
+	installs, err := appInstallRepo.ListBy(context.Background(), repo.WithByLowerName(name))
+	if err != nil {
+		return false, err
+	}
+	return len(installs) > 0, nil
+}
+
+func buildBatchInstallOpenclawAllowedOrigin(req dto.AgentBatchInstallReq) (string, error) {
+	host := ""
+	if value, err := settingRepo.GetValueByKey("SystemIP"); err == nil {
+		host = strings.TrimSpace(value)
+	}
+	if host == "" {
+		host = strings.TrimSpace(req.FallbackAccessHost)
+	}
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	return buildOpenclawAllowedOrigin(openclawAllowedOriginScheme(req.AppVersion), host, req.WebUIPort)
+}
+
+func (a AgentService) ensureBatchInstallAccount(req dto.AgentBatchInstallReq) (uint, error) {
+	if !requiresAgentAccount(req.AgentType) {
+		return 0, nil
+	}
+	if req.MasterAccountID == 0 {
+		return 0, buserr.New("ErrInvalidParams")
+	}
+	snapshot := req.AccountSnapshot
+	account, err := agentAccountRepo.GetFirst(agentAccountRepo.WithByMasterAccountID(req.MasterAccountID))
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, err
+	}
+	if account == nil && global.IsMaster {
+		account, err = agentAccountRepo.GetFirst(repo.WithByID(req.MasterAccountID))
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, err
+		}
+	}
+	if account == nil {
+		account = &model.AgentAccount{
+			MasterAccountID: req.MasterAccountID,
+		}
+	}
+	account.MasterAccountID = req.MasterAccountID
+	account.Provider = snapshot.Provider
+	account.Name = snapshot.Name
+	account.APIKey = snapshot.APIKey
+	account.RememberAPIKey = snapshot.RememberAPIKey
+	account.BaseURL = snapshot.BaseURL
+	account.APIType = snapshot.APIType
+	account.Remark = snapshot.Remark
+	account.Verified = true
+
+	initialModels, err := buildInitialAgentAccountModels(account, req.AccountModels)
+	if err != nil {
+		return 0, err
+	}
+	if err := global.DB.Transaction(func(tx *gorm.DB) error {
+		if account.ID == 0 {
+			if err := tx.Create(account).Error; err != nil {
+				return err
+			}
+		} else {
+			if err := tx.Save(account).Error; err != nil {
+				return err
+			}
+		}
+		return replacePersistedAgentAccountModelsWithTx(tx, account.ID, initialModels)
+	}); err != nil {
+		return 0, err
+	}
+	return account.ID, nil
+}
+
+func requiresAgentAccount(agentType string) bool {
+	return agentType != constant.AppCopaw
 }
 
 func setAgentWebUIParams(params map[string]interface{}, agentType, appVersion string, webUIPort int) {
@@ -652,18 +1094,19 @@ func (a AgentService) PageAccounts(req dto.AgentAccountSearch) (int64, []dto.Age
 			apiKey = item.APIKey
 		}
 		items = append(items, dto.AgentAccountInfo{
-			ID:             item.ID,
-			Provider:       item.Provider,
-			ProviderName:   providercatalog.DisplayName(item.Provider),
-			Name:           item.Name,
-			APIKey:         apiKey,
-			RememberAPIKey: item.RememberAPIKey,
-			BaseURL:        item.BaseURL,
-			Models:         nil,
-			APIType:        item.APIType,
-			Verified:       item.Verified,
-			Remark:         item.Remark,
-			CreatedAt:      item.CreatedAt,
+			ID:              item.ID,
+			MasterAccountID: item.MasterAccountID,
+			Provider:        item.Provider,
+			ProviderName:    providercatalog.DisplayName(item.Provider),
+			Name:            item.Name,
+			APIKey:          apiKey,
+			RememberAPIKey:  item.RememberAPIKey,
+			BaseURL:         item.BaseURL,
+			Models:          nil,
+			APIType:         item.APIType,
+			Verified:        item.Verified,
+			Remark:          item.Remark,
+			CreatedAt:       item.CreatedAt,
 		})
 	}
 	for i := range items {
@@ -674,6 +1117,10 @@ func (a AgentService) PageAccounts(req dto.AgentAccountSearch) (int64, []dto.Age
 		items[i].Models = models
 	}
 	return count, items, nil
+}
+
+func (a AgentService) CountAccountsByProviders(req dto.AgentAccountProviderCountReq) (map[string]int64, error) {
+	return agentAccountRepo.CountByProviders(req.Providers)
 }
 
 func (a AgentService) GetAccountModels(req dto.AgentAccountModelReq) ([]dto.AgentAccountModel, error) {
@@ -990,7 +1437,7 @@ func validateAgentConfigFileContent(agentType, content string) error {
 }
 
 func getOpenclawNPMRegistry(containerName string) (string, error) {
-	registry, err := runDockerExecWithStdout(20*time.Second, containerName, "npm", "get", "registry")
+	registry, err := cmd.RunDockerExecWithStdout(20*time.Second, containerName, "npm", "get", "registry")
 	if err != nil {
 		return "", err
 	}
@@ -1002,7 +1449,7 @@ func getOpenclawNPMRegistry(containerName string) (string, error) {
 }
 
 func setOpenclawNPMRegistry(containerName, registry string) error {
-	return cmd.RunDefaultBashCf("docker exec %s npm set registry %q", containerName, registry)
+	return cmd.NewCommandMgr().Run("docker", "exec", containerName, "npm", "set", "registry", registry)
 }
 
 func (a AgentService) loadAgentAndInstall(agentID uint) (*model.Agent, *model.AppInstall, error) {

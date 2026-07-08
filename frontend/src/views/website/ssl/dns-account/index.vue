@@ -3,7 +3,7 @@
         <template #content>
             <ComplexTable :data="data" :pagination-config="paginationConfig" @search="search()">
                 <template #toolbar>
-                    <el-button type="primary" @click="openCreate">
+                    <el-button v-permission type="primary" @click="openCreate">
                         {{ $t('commons.button.create') }}
                     </el-button>
                 </template>
@@ -16,6 +16,11 @@
                 <el-table-column :label="$t('commons.table.type')" prop="type">
                     <template #default="{ row }">
                         <span>{{ getDNSName(row.type) }}</span>
+                        <el-tooltip v-if="row.type === 'DnsPod'" :content="$t('ssl.dnsPodRemovedTip')" placement="top">
+                            <el-tag type="danger" size="small" class="ml-2">
+                                {{ $t('ssl.dnsPodRemoved') }}
+                            </el-tag>
+                        </el-tooltip>
                     </template>
                 </el-table-column>
                 <fu-table-operations
@@ -53,12 +58,14 @@ const opRef = ref();
 const buttons = [
     {
         label: i18n.global.t('commons.button.edit'),
+        permission: true,
         click: function (row: Website.DnsAccount) {
             openEdit(row);
         },
     },
     {
         label: i18n.global.t('commons.button.delete'),
+        permission: true,
         click: function (row: Website.DnsAccount) {
             deleteAccount(row);
         },

@@ -11,6 +11,7 @@
             <fu-table
                 v-bind="$attrs"
                 ref="tableRef"
+                @select="handleSelect"
                 @selection-change="handleSelectionChange"
                 :max-height="tableHeight"
                 @row-contextmenu="handleRightClick"
@@ -49,7 +50,7 @@
                         @size-change="sizeChange"
                         @current-change="currentChange"
                         :pager-count="responsivePagerCount"
-                        :size="mobile || paginationConfig.small ? 'small' : 'default'"
+                        :size="isMobile || paginationConfig.small ? 'small' : 'default'"
                         :layout="responsivePaginationLayout"
                     />
                 </slot>
@@ -74,9 +75,12 @@
     </div>
 </template>
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
-import { GlobalStore } from '@/store';
+import { ref, computed, onMounted, useAttrs } from 'vue';
+import { useGlobalStore } from '@/composables/useGlobalStore';
+import { hasManagePermissionAccess, hasPermissionAccess } from '@/utils/permission';
 const slots = useSlots();
+const attrs = useAttrs();
+const { isMobile, openMenuTabs } = useGlobalStore();
 
 defineOptions({ name: 'ComplexTable' });
 export interface DropdownProps {
@@ -105,10 +109,6 @@ const props = defineProps({
     },
 });
 const emit = defineEmits(['search', 'update:selects', 'update:paginationConfig']);
-const globalStore = GlobalStore();
-const mobile = computed(() => {
-    return globalStore.isMobile();
-});
 const tableRef = ref();
 const tableHeight = ref<number | string>('');
 const menuRef = ref<HTMLElement | null>(null);
@@ -116,6 +116,10 @@ const paginationRef = ref<HTMLElement | null>(null);
 const leftSelect = ref(false);
 const paginationWidth = ref(0);
 let paginationResizeObserver: ResizeObserver | null = null;
+const shiftPressed = ref(false);
+const lastSelectedRow = ref<any | null>(null);
+const rangeBaseRows = ref<any[]>([]);
+let isRangeSelecting = false;
 
 const rightClick = ref({
     visible: false,
@@ -125,6 +129,25 @@ const rightClick = ref({
 });
 const selectedRows = ref<any[]>([]);
 const handleRightClick = (row, column, event) => {
+    if (!tableRef.value) return;
+
+    try {
+        const selectionColumn = tableRef.value.refElTable.columns.find((col) => col.type === 'selection');
+        const isSelectable = selectionColumn?.selectable ? selectionColumn.selectable(row) : true;
+        if (!isSelectable) {
+            if (!props.rightButtons) return;
+            event.preventDefault();
+            rightClick.value = {
+                visible: true,
+                left: event.clientX + 5,
+                top: event.clientY,
+                currentRow: row,
+            };
+            document.addEventListener('click', closeRightClick);
+            return;
+        }
+    } catch {}
+
     if (!selectedRows.value.includes(row)) {
         clearSelects();
         tableRef.value.refElTable.toggleRowSelection(row);
@@ -147,7 +170,15 @@ const closeRightClick = () => {
 };
 const disabled = computed(() => {
     return function (btn: any) {
-        return typeof btn.disabled === 'function' ? btn.disabled(rightClick.value.currentRow) : btn.disabled;
+        let permissionDisabled = false;
+        if (btn.permission === true) {
+            permissionDisabled = !hasManagePermissionAccess();
+        } else if (btn.permission !== undefined) {
+            permissionDisabled = !hasPermissionAccess(btn.permission);
+        }
+        const buttonDisabled =
+            typeof btn.disabled === 'function' ? btn.disabled(rightClick.value.currentRow) : btn.disabled;
+        return permissionDisabled || buttonDisabled;
     };
 });
 const visibleRightButtons = computed(() => {
@@ -186,7 +217,85 @@ function handleSelectionChange(row: any) {
         leftSelect.value = true;
     } else {
         leftSelect.value = false;
+        if (!isRangeSelecting) {
+            lastSelectedRow.value = null;
+            rangeBaseRows.value = [];
+        }
     }
+}
+
+const getTableData = () => {
+    const data = attrs.data;
+    return Array.isArray(data) ? data : [];
+};
+
+function isRowSelectable(row: any) {
+    try {
+        const selectionColumn = tableRef.value?.refElTable.columns.find((col) => col.type === 'selection');
+        return typeof selectionColumn?.selectable === 'function' ? selectionColumn.selectable(row) : true;
+    } catch {
+        return true;
+    }
+}
+
+function updateRowSelection(row: any, selected: boolean) {
+    tableRef.value?.refElTable.toggleRowSelection(row, selected);
+}
+
+function syncSelection(targetRows: any[]) {
+    const currentRows = selectedRows.value;
+    const targetSet = new Set(targetRows);
+    for (const row of currentRows) {
+        if (!targetSet.has(row)) {
+            updateRowSelection(row, false);
+        }
+    }
+    for (const row of targetRows) {
+        if (!currentRows.includes(row)) {
+            updateRowSelection(row, true);
+        }
+    }
+}
+
+function applyRangeSelection(targetRow: any) {
+    const table = tableRef.value?.refElTable;
+    if (!table || !lastSelectedRow.value) {
+        return false;
+    }
+    const tableData = getTableData();
+    const startIndex = tableData.indexOf(lastSelectedRow.value);
+    const endIndex = tableData.indexOf(targetRow);
+    if (startIndex === -1 || endIndex === -1) {
+        return false;
+    }
+    const [start, end] = [startIndex, endIndex].sort((a, b) => a - b);
+    const nextRangeRows = tableData.slice(start, end + 1).filter((row) => isRowSelectable(row));
+    const nextSelectionRows = [...rangeBaseRows.value];
+    for (const row of nextRangeRows) {
+        if (!nextSelectionRows.includes(row)) {
+            nextSelectionRows.push(row);
+        }
+    }
+    isRangeSelecting = true;
+    try {
+        syncSelection(nextSelectionRows);
+    } finally {
+        isRangeSelecting = false;
+    }
+    return true;
+}
+
+function handleSelect(selection: any[], row: any) {
+    if (isRangeSelecting) {
+        return;
+    }
+    if (shiftPressed.value && applyRangeSelection(row)) {
+        clearTextSelection();
+        return;
+    }
+    lastSelectedRow.value = row;
+    rangeBaseRows.value = selection.filter((item) => item !== row);
+    clearTextSelection();
 }
 
 function sort(prop: string, order: string) {
@@ -195,10 +304,24 @@ function sort(prop: string, order: string) {
 
 function clearSelects() {
     tableRef.value.refElTable.clearSelection();
+    lastSelectedRow.value = null;
+    rangeBaseRows.value = [];
 }
 
 function clearSort() {
     tableRef.value.refElTable.clearSort();
+}
+
+function clearTextSelection() {
+    const selection = window.getSelection?.();
+    if (selection && selection.rangeCount > 0) {
+        selection.removeAllRanges();
+    }
+}
+
+function hasActiveTextSelection() {
+    const selection = window.getSelection?.();
+    return !!selection && !selection.isCollapsed && selection.toString().trim().length > 0;
 }
 
 const updatePaginationWidth = () => {
@@ -206,7 +329,7 @@ const updatePaginationWidth = () => {
 };
 
 const responsivePaginationLayout = computed(() => {
-    if (mobile.value || props.paginationConfig?.small) {
+    if (isMobile.value || props.paginationConfig?.small) {
         return 'total, prev, pager, next';
     }
     if (paginationWidth.value < 520) {
@@ -216,7 +339,7 @@ const responsivePaginationLayout = computed(() => {
 });
 
 const responsivePagerCount = computed(() => {
-    if (mobile.value || props.paginationConfig?.small || paginationWidth.value < 720) {
+    if (isMobile.value || props.paginationConfig?.small || paginationWidth.value < 720) {
         return 5;
     }
     return 7;
@@ -252,18 +375,24 @@ watch(
 
 function handleRowClick(row: any, column: any, event: any) {
     if (!tableRef.value) return;
-    try {
-        const selectionColumn = tableRef.value.refElTable.columns.find((col) => col.type === 'selection');
-        const isSelectable = selectionColumn.selectable(row);
-        if (!isSelectable) return;
-    } catch {}
+    if (!isRowSelectable(row)) return;
 
     const target = event.target as HTMLElement;
+    if (hasActiveTextSelection() && !event.shiftKey) {
+        return;
+    }
 
     if (target.closest('.el-checkbox')) return;
     if (
         target.closest('button') ||
         target.closest('a') ||
+        target.closest('input') ||
+        target.closest('textarea') ||
+        target.closest('[contenteditable="true"]') ||
+        target.closest('.el-input') ||
+        target.closest('.el-textarea') ||
+        target.closest('.el-input-number') ||
+        target.closest('.el-date-editor') ||
         target.closest('.el-switch') ||
         target.closest('.el-select') ||
         target.closest('.table-link') ||
@@ -271,7 +400,15 @@ function handleRowClick(row: any, column: any, event: any) {
     ) {
         return;
     }
+    if (event.shiftKey && applyRangeSelection(row)) {
+        clearTextSelection();
+        return;
+    }
+    const selected = !selectedRows.value.includes(row);
     tableRef.value.refElTable.toggleRowSelection(row);
+    lastSelectedRow.value = row;
+    rangeBaseRows.value = selected ? selectedRows.value : selectedRows.value.filter((item) => item !== row);
+    clearTextSelection();
 }
 
 defineExpose({
@@ -283,7 +420,7 @@ defineExpose({
 
 function calcHeight() {
     let heightDiff = props.heightDiff ?? 320;
-    let tabHeight = globalStore.openMenuTabs ? 48 : 0;
+    let tabHeight = openMenuTabs.value ? 48 : 0;
 
     if (props.height) {
         tableHeight.value = props.height - tabHeight;
@@ -296,6 +433,18 @@ const toggleSelection = () => {
     tableRef.value.refElTable.toggleAllSelection();
 };
 
+const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Shift') {
+        shiftPressed.value = true;
+    }
+};
+
+const handleKeyUp = (event: KeyboardEvent) => {
+    if (event.key === 'Shift') {
+        shiftPressed.value = false;
+    }
+};
+
 onMounted(() => {
     calcHeight();
     nextTick(() => {
@@ -306,6 +455,8 @@ onMounted(() => {
         }
     });
     window.addEventListener('resize', calcHeight);
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
     watch(
         () => [props.height, props.heightDiff],
         () => {
@@ -316,6 +467,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     window.removeEventListener('resize', calcHeight);
+    window.removeEventListener('keydown', handleKeyDown);
+    window.removeEventListener('keyup', handleKeyUp);
     paginationResizeObserver?.disconnect();
     paginationResizeObserver = null;
 });

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"path"
-	"strings"
 	"time"
 
 	"github.com/1Panel-dev/1Panel/agent/constant"
@@ -24,7 +23,7 @@ func (z ZipArchiver) Extract(ctx context.Context, filePath, dstDir string, secre
 	if err := checkCmdAvailability("unzip"); err != nil {
 		return err
 	}
-	return cmd.NewCommandMgr(cmd.WithContext(ctx)).RunBashCf("unzip -qo %s -d %s", filePath, dstDir)
+	return cmd.NewCommandMgr(cmd.WithContext(ctx)).Run("unzip", "-qo", filePath, "-d", dstDir)
 }
 
 func (z ZipArchiver) Compress(ctx context.Context, sourcePaths []string, dstFile string, _ string) error {
@@ -43,7 +42,8 @@ func (z ZipArchiver) Compress(ctx context.Context, sourcePaths []string, dstFile
 		relativePaths[i] = path.Base(sp)
 	}
 	cmdMgr := cmd.NewCommandMgr(cmd.WithWorkDir(baseDir), cmd.WithContext(ctx))
-	if err = cmdMgr.Run("zip", "-qr", tmpFile, strings.Join(relativePaths, " ")); err != nil {
+	args := append([]string{"-qr", tmpFile}, relativePaths...)
+	if err = cmdMgr.Run("zip", args...); err != nil {
 		return err
 	}
 	if err = op.Mv(tmpFile, dstFile); err != nil {

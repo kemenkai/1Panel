@@ -7,6 +7,7 @@ import (
 type OperationLog struct {
 	ID        uint   `json:"id"`
 	Source    string `json:"source"`
+	User      string `json:"user"`
 	Node      string `json:"node"`
 	IP        string `json:"ip"`
 	Path      string `json:"path"`
@@ -32,13 +33,16 @@ type SearchOpLogWithPage struct {
 
 type SearchLgLogWithPage struct {
 	PageInfo
-	IP     string `json:"ip"`
-	Status string `json:"status"`
+	Info      string    `json:"info"`
+	Status    string    `json:"status"`
+	StartTime time.Time `json:"startTime"`
+	EndTime   time.Time `json:"endTime"`
 }
 
 type LoginLog struct {
 	ID        uint      `json:"id"`
 	IP        string    `json:"ip"`
+	User      string    `json:"user"`
 	Address   string    `json:"address"`
 	Agent     string    `json:"agent"`
 	Status    string    `json:"status"`

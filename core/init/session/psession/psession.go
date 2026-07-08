@@ -14,15 +14,20 @@ import (
 )
 
 type SessionUser struct {
-	ID   uint   `json:"id"`
+	ID   string `json:"id"`
+	Role string `json:"role"`
 	Name string `json:"name"`
 }
 
+const SuperAdminSessionUserID = "__super_admin__"
+const GinContextSessionUserKey = "session_user"
+
 type sessionItem struct {
-	CreatedAt time.Time
-	CSRFToken string
-	User      SessionUser
-	ExpiredAt time.Time
+	CreatedAt    time.Time
+	LastActiveAt time.Time
+	CSRFToken    string
+	User         SessionUser
+	ExpiredAt    time.Time
 }
 
 type PSession struct {
@@ -32,7 +37,7 @@ type PSession struct {
 	lastFullCleanup time.Time
 }
 
-const maxSessionEntries = 64
+const maxSessionEntries = 1024
 
 func NewPSession(_ string) *PSession {
 	return &PSession{
@@ -88,8 +93,9 @@ func (p *PSession) set(c *gin.Context, user SessionUser, secure bool, ttlSeconds
 		}
 	}
 
-	expiredAt := time.Now().Add(time.Duration(ttlSeconds) * time.Second)
-	createdAt := time.Now()
+	now := time.Now()
+	expiredAt := now.Add(time.Duration(ttlSeconds) * time.Second)
+	createdAt := now
 	csrfToken := ""
 
 	p.mu.Lock()
@@ -107,10 +113,11 @@ func (p *PSession) set(c *gin.Context, user SessionUser, secure bool, ttlSeconds
 		}
 	}
 	p.sessions[sessionID] = sessionItem{
-		CreatedAt: createdAt,
-		CSRFToken: csrfToken,
-		User:      user,
-		ExpiredAt: expiredAt,
+		CreatedAt:    createdAt,
+		LastActiveAt: now,
+		CSRFToken:    csrfToken,
+		User:         user,
+		ExpiredAt:    expiredAt,
 	}
 	p.evictOverflowLocked(sessionID)
 	p.mu.Unlock()
@@ -197,6 +204,41 @@ func (p *PSession) CheckCSRFToken(c *gin.Context, token string) bool {
 		return false
 	}
 	return item.CSRFToken == token
+}
+
+func (p *PSession) DeleteByID(id string) error {
+	if id == "" {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for sessionID, item := range p.sessions {
+		if item.User.ID == id {
+			delete(p.sessions, sessionID)
+		}
+	}
+	return nil
+}
+
+func (p *PSession) ApplyTimeout(ttlSeconds int) {
+	now := time.Now()
+	ttl := time.Duration(ttlSeconds) * time.Second
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for sessionID, item := range p.sessions {
+		lastActiveAt := item.LastActiveAt
+		if lastActiveAt.IsZero() {
+			lastActiveAt = item.CreatedAt
+		}
+		expiredAt := lastActiveAt.Add(ttl)
+		if now.After(expiredAt) {
+			delete(p.sessions, sessionID)
+			continue
+		}
+		item.ExpiredAt = expiredAt
+		p.sessions[sessionID] = item
+	}
 }
 
 func (p *PSession) Clean() error {

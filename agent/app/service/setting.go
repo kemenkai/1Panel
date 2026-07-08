@@ -3,6 +3,8 @@ package service
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/app/repo"
 	"github.com/1Panel-dev/1Panel/agent/buserr"
 	"github.com/1Panel-dev/1Panel/agent/constant"
+	"github.com/1Panel-dev/1Panel/agent/global"
 	"github.com/1Panel-dev/1Panel/agent/utils/encrypt"
 	"github.com/1Panel-dev/1Panel/agent/utils/ssh"
 	terminalai "github.com/1Panel-dev/1Panel/agent/utils/terminal/ai"
@@ -27,6 +30,7 @@ type ISettingService interface {
 	GetTerminalAIInfo() (*dto.TerminalAIInfo, error)
 	GetFileManageAIInfo() (*dto.FileManageAIInfo, error)
 	GetFileHistorySettingInfo() (*response.FileHistorySettingInfo, error)
+	GetWebsiteDir() string
 	Update(key, value string) error
 	UpdateTerminalAI(req dto.TerminalAIInfo) error
 	UpdateFileManageAI(req dto.FileManageAIInfo) error
@@ -37,7 +41,7 @@ type ISettingService interface {
 	SetDefaultIsConn(req dto.SSHDefaultConn) error
 	GetSystemProxy() (*dto.SystemProxy, error)
 	GetLocalConn() dto.SSHConnData
-	GetSettingByKey(key string) string
+	GetLocalConnForSSH() (dto.SSHConnData, error)
 
 	SaveDescription(req dto.CommonDescription) error
 }
@@ -111,8 +115,31 @@ func (u *SettingService) GetFileHistorySettingInfo() (*response.FileHistorySetti
 	return historyService.GetSettingInfo()
 }
 
+func (u *SettingService) GetWebsiteDir() string {
+	value, _ := settingRepo.GetValueByKey("WEBSITE_DIR")
+	if value == "" {
+		return path.Join(global.Dir.BaseDir, "1panel", "www")
+	}
+	return value
+}
+
 func (u *SettingService) Update(key, value string) error {
-	return settingRepo.UpdateOrCreate(key, value)
+	oldValue := constant.FirewallPortWhiteListValue
+	if key == constant.FirewallPortWhiteList {
+		if _, err := parseFirewallPortWhiteList(value); err != nil {
+			return err
+		}
+		if val, err := settingRepo.GetValueByKey(key); err == nil {
+			oldValue = val
+		}
+	}
+	if err := settingRepo.UpdateOrCreate(key, value); err != nil {
+		return err
+	}
+	if key == constant.FirewallPortWhiteList {
+		return syncFirewallPortWhiteListAfterUpdate(oldValue)
+	}
+	return nil
 }
 
 func (u *SettingService) UpdateTerminalAI(req dto.TerminalAIInfo) error {
@@ -267,18 +294,25 @@ func (u *SettingService) GetSystemProxy() (*dto.SystemProxy, error) {
 	return &systemProxy, nil
 }
 
-func (u *SettingService) GetLocalConn() dto.SSHConnData {
+func (u *SettingService) loadLocalConn() dto.SSHConnData {
 	var data dto.SSHConnData
-	data.LocalSSHConnShow, _ = settingRepo.GetValueByKey("LocalSSHConnShow")
+	localSSHConnShow, _ := settingRepo.GetValueByKey("LocalSSHConnShow")
+	data.LocalSSHConnShow = localSSHConnShow
 	connItem, _ := settingRepo.GetValueByKey("LocalSSHConn")
 	if len(connItem) == 0 {
 		return data
 	}
 	connInfoInDB, _ := encrypt.StringDecrypt(connItem)
-	data.LocalSSHConnShow, _ = settingRepo.GetValueByKey("LocalSSHConnShow")
 	if err := json.Unmarshal([]byte(connInfoInDB), &data); err != nil {
+		data.LocalSSHConnShow = localSSHConnShow
 		return data
 	}
+	data.LocalSSHConnShow = localSSHConnShow
+	return data
+}
+
+func (u *SettingService) GetLocalConn() dto.SSHConnData {
+	data := u.loadLocalConn()
 	if len(data.Password) != 0 {
 		data.Password = base64.StdEncoding.EncodeToString([]byte(data.Password))
 	}
@@ -291,19 +325,12 @@ func (u *SettingService) GetLocalConn() dto.SSHConnData {
 	return data
 }
 
-func (u *SettingService) GetSettingByKey(key string) string {
-	switch key {
-	case "LocalSSHConn":
-		value, _ := settingRepo.GetValueByKey(key)
-		if len(value) == 0 {
-			return ""
-		}
-		itemStr, _ := encrypt.StringDecrypt(value)
-		return itemStr
-	default:
-		value, _ := settingRepo.GetValueByKey(key)
-		return value
+func (u *SettingService) GetLocalConnForSSH() (dto.SSHConnData, error) {
+	data := u.loadLocalConn()
+	if len(data.Addr) == 0 {
+		return data, errors.New("no such ssh conn info in db")
 	}
+	return data, nil
 }
 
 func (u *SettingService) SaveDescription(req dto.CommonDescription) error {

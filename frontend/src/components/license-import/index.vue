@@ -5,7 +5,15 @@
                 <span class="text-3xl font-medium title">
                     {{ $t('license.importLicense') }}
                 </span>
-                <el-row type="flex" justify="center" class="mt-6">
+                <el-row type="flex" justify="center" class="mt-4">
+                    <el-col :span="22">
+                        <div class="license-security-tip">
+                            <div class="license-security-title">{{ $t('license.securityWarningTitle') }}</div>
+                            <div>{{ $t('license.securityWarningContent') }}</div>
+                        </div>
+                    </el-col>
+                </el-row>
+                <el-row type="flex" justify="center" class="mt-4">
                     <el-col :span="22">
                         <el-upload
                             action="#"
@@ -59,12 +67,12 @@
 import i18n from '@/lang';
 import { ref } from 'vue';
 import { MsgSuccess } from '@/utils/message';
-import { uploadLicense } from '@/api/modules/setting';
+import { uploadLicense, uploadEnterpriseLicense } from '@/api/modules/setting';
 import DockerProxy from '@/components/docker-proxy/index.vue';
-import { GlobalStore } from '@/store';
 import { UploadFile, UploadFiles, UploadInstance, UploadProps, UploadRawFile, genFileId } from 'element-plus';
 import { getXpackSettingForTheme, loadMasterProductProFromDB, loadProductProFromDB } from '@/utils/xpack';
-const globalStore = GlobalStore();
+import { useGlobalStore } from '@/composables/useGlobalStore';
+const { isIntl, isEnterprise, currentNode, isProductPro, isMasterProductPro, isEnterpriseLicensed } = useGlobalStore();
 
 const em = defineEmits(['search']);
 
@@ -112,7 +120,7 @@ const handleExceed: UploadProps['onExceed'] = (files) => {
 };
 
 const toEdition = () => {
-    if (!globalStore.isIntl) {
+    if (!isIntl.value) {
         window.open('https://1panel.cn/versions.html' + '', '_blank', 'noopener,noreferrer');
     } else {
         window.open('https://1panel.pro/pricing' + '', '_blank', 'noopener,noreferrer');
@@ -126,34 +134,31 @@ const submit = async () => {
     const file = uploaderFiles.value[0];
     const formData = new FormData();
     formData.append('file', file.raw);
+    if (isEnterprise.value) {
+        loading.value = true;
+        await uploadEnterpriseLicense(formData)
+            .then(async () => {
+                await handleAfterSubmit();
+            })
+            .catch(() => {
+                loading.value = false;
+                uploadRef.value!.clearFiles();
+                uploaderFiles.value = [];
+            });
+        return;
+    }
     if (oldLicense.value) {
         formData.append('oldLicenseName', oldLicense.value);
     }
     if (!isImport.value) {
-        formData.append('currentNode', globalStore.currentNode);
+        formData.append('currentNode', currentNode.value);
         formData.append('withDockerRestart', withDockerRestart.value);
     }
     formData.append('isForce', isForce.value);
     loading.value = true;
     await uploadLicense(oldLicense.value, formData)
         .then(async () => {
-            loading.value = false;
-            uploadRef.value!.clearFiles();
-            uploaderFiles.value = [];
-            open.value = false;
-            MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
-            if (!isImport.value) {
-                globalStore.isProductPro = true;
-                globalStore.isMasterProductPro = true;
-            }
-            if (!withoutReload.value) {
-                loadMasterProductProFromDB();
-                loadProductProFromDB();
-                getXpackSettingForTheme();
-                window.location.reload();
-            } else {
-                em('search');
-            }
+            await handleAfterSubmit();
         })
         .catch(() => {
             loading.value = false;
@@ -162,7 +167,49 @@ const submit = async () => {
         });
 };
 
+const handleAfterSubmit = async () => {
+    loading.value = false;
+    uploadRef.value!.clearFiles();
+    uploaderFiles.value = [];
+    open.value = false;
+    MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));
+    if (!isImport.value) {
+        if (!isEnterprise.value) isProductPro.value = true;
+        isMasterProductPro.value = true;
+    } else {
+        isEnterpriseLicensed.value = true;
+    }
+    if (!withoutReload.value) {
+        await loadMasterProductProFromDB();
+        await loadProductProFromDB();
+        await getXpackSettingForTheme();
+        window.location.reload();
+    } else {
+        em('search');
+    }
+};
+
 defineExpose({
     acceptParams,
 });
 </script>
+
+<style lang="scss" scoped>
+.license-security-tip {
+    padding: 8px 10px;
+    text-align: left;
+    font-size: 12px;
+    line-height: 20px;
+    color: var(--el-text-color-regular);
+    background: var(--el-color-warning-light-9);
+    border: 1px solid var(--el-color-warning-light-7);
+    border-left: 3px solid var(--el-color-warning);
+    border-radius: 4px;
+}
+
+.license-security-title {
+    margin-bottom: 2px;
+    font-weight: 600;
+    color: var(--el-color-warning-dark-2);
+}
+</style>

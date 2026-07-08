@@ -48,6 +48,7 @@ const onSaveTimeout = async (formEl: FormInstance | undefined) => {
     if (!formEl) return;
     formEl.validate(async (valid) => {
         if (!valid) return;
+        loading.value = true;
         await updateSetting({ key: 'SessionTimeout', value: form.sessionTimeout + '' })
             .then(async () => {
                 MsgSuccess(i18n.global.t('commons.msg.operationSuccess'));

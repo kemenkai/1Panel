@@ -9,18 +9,14 @@
             ]"
         />
 
-        <el-alert
-            v-if="!isSafety && globalStore.showEntranceWarn"
-            class="card-interval"
-            type="warning"
-            @close="hideEntrance"
-        >
+        <el-alert v-if="!isSafety && showEntranceWarn" class="card-interval" type="warning" @close="hideEntrance">
             <template #title>
                 <span class="flx-align-center">
                     <span>{{ $t('home.entranceHelper') }}</span>
                     <el-link
                         style="font-size: 12px; margin-left: 5px"
                         icon="Position"
+                        v-if="isAdmin"
                         @click="jumpToPath(router, '/settings/safe')"
                         type="primary"
                     >
@@ -34,7 +30,13 @@
             <el-col :xs="24" :sm="24" :md="16" :lg="16" :xl="16">
                 <CardWithHeader v-if="!isWindowsLitePanel" :header="$t('menu.home')" height="166px">
                     <template #header-r>
-                        <el-button class="h-button-setting" @click="quickJumpRef.acceptParams()" link icon="Setting" />
+                        <el-button
+                            class="h-button-setting"
+                            :disabled="!isAdminOrNodeAdmin"
+                            @click="quickJumpRef.acceptParams()"
+                            link
+                            icon="Setting"
+                        />
                     </template>
                     <template #body>
                         <div class="h-overview">
@@ -47,11 +49,24 @@
                                             :content="item.detail"
                                             placement="bottom"
                                         >
-                                            <span @click="quickJump(item)">
+                                            <el-button
+                                                link
+                                                :disabled="!checkPermission('File')"
+                                                type="primary"
+                                                @click="quickJump(item)"
+                                            >
                                                 {{ item.alias || item.detail.substring(0, 18) + '...' }}
-                                            </span>
+                                            </el-button>
                                         </el-tooltip>
-                                        <span @click="quickJump(item)" v-else>{{ item.detail }}</span>
+                                        <el-button
+                                            link
+                                            :disabled="!checkPermission(item.name)"
+                                            type="primary"
+                                            @click="quickJump(item)"
+                                            v-else
+                                        >
+                                            {{ item.detail }}
+                                        </el-button>
                                     </div>
                                 </el-col>
                             </el-row>
@@ -203,7 +218,12 @@
                                         </div>
                                     </div>
                                     <template #reference>
-                                        <el-button class="h-button-setting" link icon="Setting" />
+                                        <el-button
+                                            class="h-button-setting"
+                                            :disabled="!isAdminOrNodeAdmin"
+                                            link
+                                            icon="Setting"
+                                        />
                                     </template>
                                 </el-popover>
                                 <el-tooltip :content="$t('commons.button.refresh')" placement="top">
@@ -312,7 +332,13 @@
                         <CardWithHeader :header="$t('home.memo')" class="memo-card">
                             <template #header-r>
                                 <el-tooltip v-if="!memoEditing" :content="$t('commons.button.edit')" placement="top">
-                                    <el-button class="h-button-setting" @click="startMemoEdit" link icon="Edit" />
+                                    <el-button
+                                        class="h-button-setting"
+                                        :disabled="!isAdminOrNodeAdmin"
+                                        @click="startMemoEdit"
+                                        link
+                                        icon="Edit"
+                                    />
                                 </el-tooltip>
                                 <el-tooltip v-if="memoEditing" :content="$t('commons.button.save')" placement="top">
                                     <el-button
@@ -430,7 +456,7 @@ import { useRouter } from 'vue-router';
 import { loadBaseInfo, loadCurrentInfo } from '@/api/modules/dashboard';
 import { getIOOptions, getNetworkOptions } from '@/api/modules/host';
 import {
-    getSettingInfo,
+    getSettingBaseInfo,
     getAgentSettingInfo,
     listAllSimpleNodes,
     loadUpgradeInfo,
@@ -438,7 +464,6 @@ import {
     updateMemo,
     updateSetting,
 } from '@/api/modules/setting';
-import { GlobalStore } from '@/store';
 import { routerToFileWithPath, routerToNameWithQuery, routerToPath } from '@/utils/router';
 import { getWelcomePage } from '@/api/modules/auth';
 import {
@@ -448,8 +473,19 @@ import {
     setDashboardCache,
 } from '@/utils/dashboardCache';
 import { MsgSuccess } from '@/utils/message';
+import { useCan } from '@/composables/useMenuManagePermission';
 const router = useRouter();
-const globalStore = GlobalStore();
+import { useGlobalStore } from '@/composables/useGlobalStore';
+const {
+    showEntranceWarn,
+    defaultNetwork,
+    defaultIO,
+    isAdmin,
+    isOnRestart,
+    hasNewVersion,
+    isAdminOrNodeAdmin,
+    isXpackOrEE,
+} = useGlobalStore();
 
 const DASHBOARD_CACHE_TTL = {
     safeStatus: 10 * 60 * 1000,
@@ -529,6 +565,20 @@ const ioOptionsFromCache = ref(false);
 const hasRefreshedOptionsOnHover = ref(false);
 
 const quickJumpRef = ref();
+const quickJumpPermissionMap = Object.fromEntries(
+    [
+        ['Agent', 'ai_agent_view'],
+        ['Website', 'website_view'],
+        ['Database', 'database_view'],
+        ['Cronjob', 'cronjob_view'],
+        ['AppInstalled', 'app_view'],
+        ['File', 'host_file_view'],
+    ].map(([name, permission]) => [name, useCan(permission)]),
+) as Record<string, ReturnType<typeof useCan>>;
+
+const checkPermission = (item: string) => {
+    return quickJumpPermissionMap[item]?.value ?? true;
+};
 
 const searchInfo = reactive({
     ioOption: 'all',
@@ -655,7 +705,7 @@ const changeOption = async () => {
 
 const applyDefaultNetOption = () => {
     if (!netOptions.value || netOptions.value.length === 0) return;
-    const defaultNet = globalStore.defaultNetwork || netOptions.value[0];
+    const defaultNet = defaultNetwork.value || netOptions.value[0];
     if (defaultNet && searchInfo.netOption !== defaultNet) {
         searchInfo.netOption = defaultNet;
     }
@@ -663,8 +713,8 @@ const applyDefaultNetOption = () => {
 
 const onLoadAgentSettingInfo = async () => {
     await getAgentSettingInfo().then((res) => {
-        globalStore.defaultIO = res.data.defaultIO;
-        globalStore.defaultNetwork = res.data.defaultNetwork;
+        defaultIO.value = res.data.defaultIO;
+        defaultNetwork.value = res.data.defaultNetwork;
     });
 };
 
@@ -684,15 +734,19 @@ const onLoadNetworkOptions = async (force?: boolean) => {
 };
 
 const onLoadSimpleNode = async () => {
+    if (!isAdmin.value) {
+        simpleNodes.value = [];
+        return;
+    }
     const res = await listAllSimpleNodes();
     simpleNodes.value = res.data || [];
 };
 
 const applyDefaultIOOption = async () => {
     if (!ioOptions.value || ioOptions.value.length === 0) return;
-    const defaultIO = globalStore.defaultIO || ioOptions.value[0];
-    if (defaultIO && searchInfo.ioOption !== defaultIO) {
-        searchInfo.ioOption = defaultIO;
+    const defaultIOOption = defaultIO.value || ioOptions.value[0];
+    if (defaultIOOption && searchInfo.ioOption !== defaultIOOption) {
+        searchInfo.ioOption = defaultIOOption;
     }
 };
 
@@ -749,7 +803,7 @@ const onLoadBaseInfo = async (isInit: boolean, range: string) => {
                 if (!isCurrentActive.value) {
                     throw new Error('jump out');
                 }
-                if (isActive.value && !globalStore.isOnRestart) {
+                if (isActive.value && !isOnRestart.value) {
                     await onLoadCurrentInfo();
                     await onLoadSimpleNode();
                 }
@@ -768,11 +822,7 @@ const quickJump = (item: any) => {
 };
 
 const showSimpleNode = () => {
-    return (
-        simpleNodeCarouselSetting.value === 'Enable' &&
-        globalStore.isMasterProductPro &&
-        simpleNodes.value?.length !== 0
-    );
+    return simpleNodeCarouselSetting.value === 'Enable' && isXpackOrEE.value && simpleNodes.value?.length !== 0;
 };
 
 const toggleSensitiveInfo = () => {
@@ -970,15 +1020,18 @@ const loadData = async () => {
 };
 
 const hideEntrance = () => {
-    globalStore.showEntranceWarn = false;
+    showEntranceWarn.value = false;
 };
 
 const loadUpgradeStatus = async () => {
+    if (!isAdmin.value) {
+        return;
+    }
     const res = await loadUpgradeInfo();
     if (res && (res.data.testVersion || res.data.newVersion || res.data.latestVersion)) {
-        globalStore.hasNewVersion = true;
+        hasNewVersion.value = true;
     } else {
-        globalStore.hasNewVersion = false;
+        hasNewVersion.value = false;
     }
 };
 
@@ -987,7 +1040,7 @@ const loadSettingInfo = async () => {
     const memoCache = getDashboardCache('memoCarouselSetting');
     const simpleNodeCache = getDashboardCache('simpleNodeCarouselSetting');
     if (safeCache === null || memoCache === null || simpleNodeCache === null) {
-        const res = await getSettingInfo();
+        const res = await getSettingBaseInfo();
         isSafety.value = res.data.securityEntrance;
         memoCarouselSetting.value = res.data.dashboardMemoVisible;
         simpleNodeCarouselSetting.value = res.data.dashboardSimpleNodeVisible;
@@ -1131,11 +1184,9 @@ onBeforeUnmount(() => {
     .count {
         margin-top: 10px;
 
-        span {
+        :deep(.el-button) {
             font-size: 18px;
-            color: $primary-color;
             line-height: 32px;
-            cursor: pointer;
         }
     }
 }
@@ -1260,18 +1311,38 @@ onBeforeUnmount(() => {
 .memo-content {
     min-height: 218px;
     border-radius: 4px;
-    font-size: 13px;
-    margin-top: -15px;
-    margin-left: -10px;
-    word-wrap: break-word;
-    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 
     :deep(.md-editor) {
         background-color: transparent;
     }
 
     :deep(.md-editor-content .md-editor-preview) {
-        font-size: 13px;
+        padding: 0;
+        font-size: 14px;
+        line-height: 1.6;
+        word-break: break-word;
+        white-space: pre-wrap;
+    }
+
+    :deep(.md-editor-preview p),
+    :deep(.md-editor-preview li),
+    :deep(.md-editor-preview table),
+    :deep(.md-editor-preview blockquote),
+    :deep(.md-editor-preview code) {
+        font-size: 14px;
+        line-height: 1.6;
+    }
+
+    :deep(.md-editor-preview h1),
+    :deep(.md-editor-preview h2),
+    :deep(.md-editor-preview h3),
+    :deep(.md-editor-preview h4),
+    :deep(.md-editor-preview h5),
+    :deep(.md-editor-preview h6) {
+        margin: 0.5em 0;
+        font-size: 12px;
+        line-height: 1.4;
     }
 }
 

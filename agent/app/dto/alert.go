@@ -2,8 +2,9 @@ package dto
 
 import (
 	"encoding/json"
-	"github.com/1Panel-dev/1Panel/agent/app/model"
 	"time"
+
+	"github.com/1Panel-dev/1Panel/agent/app/model"
 )
 
 type CreateOrUpdateAlert struct {
@@ -35,6 +36,15 @@ type AlertSearch struct {
 	Method  string `json:"method"`
 }
 
+type AlertConfigQuery struct {
+	ExcludeTypes []string `json:"excludeTypes"`
+}
+
+type AlertConfigPageReq struct {
+	PageInfo
+	ExcludeTypes []string `json:"excludeTypes"`
+}
+
 type AlertDTO struct {
 	ID             uint      `json:"id"`
 	Type           string    `json:"type"`
@@ -46,6 +56,8 @@ type AlertDTO struct {
 	Status         string    `json:"status"`
 	SendCount      uint      `json:"sendCount"`
 	AdvancedParams string    `json:"advancedParams"`
+	CreateUser     string    `json:"createUser"`
+	UpdateUser     string    `json:"updateUser"`
 	CreatedAt      time.Time `json:"createdAt"`
 	UpdatedAt      time.Time `json:"updatedAt"`
 }
@@ -281,11 +293,12 @@ type OfflineQueryRequest struct {
 }
 
 type AlertConfigUpdate struct {
-	ID     uint   `json:"id"`
-	Type   string `json:"type"`
-	Title  string `json:"title"`
-	Status string `json:"status"`
-	Config string `json:"config"`
+	ID          uint   `json:"id"`
+	Type        string `json:"type"`
+	Title       string `json:"title"`
+	Status      string `json:"status"`
+	Config      string `json:"config"`
+	DisplayName string `json:"displayName"`
 }
 
 type AlertConfigTest struct {

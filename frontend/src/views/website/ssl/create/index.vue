@@ -145,8 +145,8 @@
                         {{ $t('ssl.shellHelper') }}
                     </span>
                 </el-form-item>
-                <PushtoNode
-                    v-if="isMaster && isMasterProductPro"
+                <PushToNode
+                    v-if="isMaster && isXpackOrEE"
                     :push-node="ssl.pushNode"
                     :nodes="ssl.pushNodes"
                     type="ssl"
@@ -158,7 +158,12 @@
         <template #footer>
             <span class="dialog-footer">
                 <el-button @click="handleClose" :disabled="loading">{{ $t('commons.button.cancel') }}</el-button>
-                <el-button type="primary" @click="submit(sslForm)" :disabled="loading">
+                <el-button
+                    v-permission="'website_cert_manage'"
+                    type="primary"
+                    @click="submit(sslForm)"
+                    :disabled="loading"
+                >
                     {{ $t('commons.button.confirm') }}
                 </el-button>
             </span>
@@ -180,10 +185,16 @@ import { KeyTypes } from '@/global/mimetype';
 import { getDNSName, getAccountName } from '@/utils/ssl';
 import { defineAsyncComponent } from 'vue';
 import { useGlobalStore } from '@/composables/useGlobalStore';
-import { loadOptionalComponent } from '@/extensions/optional';
-const { isMasterProductPro, isMaster } = useGlobalStore();
+const { isMaster, isXpackOrEE } = useGlobalStore();
 
-const PushtoNode = defineAsyncComponent(() => loadOptionalComponent('/src/xpack/views/ssl/index.vue'));
+const PushToNode = defineAsyncComponent(async () => {
+    const modules = import.meta.glob('@/xpack/views/ssl/index.vue');
+    const loader = modules['/src/xpack/views/ssl/index.vue'];
+    if (loader) {
+        return ((await loader()) as any).default;
+    }
+    return { template: '<div></div>' };
+});
 
 const props = defineProps({
     id: {
@@ -236,7 +247,7 @@ const initData = () => ({
     acmeAccountId: undefined,
     dnsAccountId: undefined,
     autoRenew: true,
-    keyType: 'P256',
+    keyType: 'EC256',
     pushDir: false,
     dir: '',
     description: '',
@@ -283,12 +294,12 @@ const changeIP = () => {
     }
 };
 
-const acceptParams = (op: string, websiteSSL: Website.SSLDTO) => {
+const acceptParams = (op: string, websiteSSL?: Website.SSLDTO) => {
     operate.value = op;
     if (op == 'create') {
         resetForm();
     }
-    if (op == 'edit') {
+    if (op == 'edit' && websiteSSL) {
         ssl.value.acmeAccountId = websiteSSL.acmeAccountId;
         if (websiteSSL.dnsAccountId > 0) {
             ssl.value.dnsAccountId = websiteSSL.dnsAccountId;

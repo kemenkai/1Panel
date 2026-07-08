@@ -38,6 +38,14 @@ func Init() {
 		migrations.UpdateAiModelMenuStructure,
 		migrations.AddDocSourceSetting,
 		migrations.AddAppStoreInstallAllowPortSetting,
+		migrations.AddUserManagementMenu,
+		migrations.AddOpsReportMenu,
+		migrations.AddAIBenchmarkMenu,
+		migrations.AddAIProxyMenu,
+		migrations.AddSkillsHubMenu,
+		migrations.AddOperationLogUser,
+		migrations.AddLoginLogUser,
+		migrations.AddAlertAuditUser,
 		migrations.AddEnhanceHideMenu,
 	})
 	if err := m.Migrate(); err != nil {

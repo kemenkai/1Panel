@@ -2,7 +2,7 @@
     <div v-loading="loading">
         <LayoutContent :title="$t('setting.backupAccount')">
             <template #leftToolBar>
-                <el-button type="primary" @click="onOpenDialog('create')">
+                <el-button v-permission type="primary" @click="onOpenDialog('create')">
                     {{ $t('commons.button.add') }}
                 </el-button>
             </template>
@@ -12,7 +12,7 @@
                 <TableSetting title="backup-account-refresh" @search="search()" />
             </template>
             <template #main>
-                <el-alert type="info" :closable="false" class="common-div" v-if="!globalStore.isFxplay">
+                <el-alert type="info" :closable="false" class="common-div" v-if="!isFxplay">
                     <template #title>
                         <span>
                             {{ $t('setting.backupAlert') }}
@@ -20,7 +20,7 @@
                                 class="ml-1 text-xs"
                                 type="primary"
                                 target="_blank"
-                                :href="globalStore.docsUrl + '/user_manual/settings/#4'"
+                                :href="docsUrl + '/user_manual/settings/#4'"
                             >
                                 {{ $t('commons.button.helpDoc') }}
                             </el-link>
@@ -40,12 +40,7 @@
                             </el-text>
                         </template>
                     </el-table-column>
-                    <el-table-column
-                        v-if="globalStore.isProductPro"
-                        :label="$t('setting.scope')"
-                        :min-width="80"
-                        prop="isPublic"
-                    >
+                    <el-table-column v-if="isProductPro" :label="$t('setting.scope')" :min-width="80" prop="isPublic">
                         <template #default="{ row }">
                             <el-button plain size="small">
                                 {{ row.isPublic ? $t('setting.public') : $t('setting.private') }}
@@ -75,6 +70,7 @@
                                     {{ $t('setting.refreshTime') + ':' + row.varsJson['refresh_time'] }}
                                 </template>
                                 <el-button
+                                    v-permission
                                     type="primary"
                                     link
                                     icon="Refresh"
@@ -126,10 +122,10 @@ import DetailShow from '@/components/detail-show/index.vue';
 import { Backup } from '@/api/interface/backup';
 import i18n from '@/lang';
 import { MsgSuccess } from '@/utils/message';
-import { GlobalStore } from '@/store';
 import { Base64 } from 'js-base64';
-const globalStore = GlobalStore();
+import { useGlobalStore } from '@/composables/useGlobalStore';
 
+const { isProductPro, isFxplay, docsUrl } = useGlobalStore();
 const loading = ref();
 const data = ref();
 const paginationConfig = reactive({
@@ -293,12 +289,14 @@ const refreshItemToken = async (row: any) => {
 const buttons = [
     {
         label: i18n.global.t('commons.button.edit'),
+        permission: true,
         click: (row: Backup.BackupInfo) => {
             onOpenDialog('edit', row);
         },
     },
     {
         label: i18n.global.t('commons.button.delete'),
+        permission: true,
         disabled: (row: Backup.BackupInfo) => {
             return row.type === 'LOCAL';
         },

@@ -24,7 +24,7 @@
                     v-model="runtime.resource"
                     @change="changeResource(runtime.resource)"
                 >
-                    <el-radio :value="'appstore'" v-if="!globalStore.isOffLine">
+                    <el-radio :value="'appstore'" v-if="!isOffline">
                         {{ $t('menu.apps') }}
                     </el-radio>
                     <el-radio :value="'local'">
@@ -150,9 +150,9 @@
                                     </span>
                                     <div>
                                         <span
-                                            v-if="!globalStore.isFxplay"
+                                            v-if="!isFxplay"
                                             class="custom-link"
-                                            @click="openLink(globalStore.docsUrl + '/user_manual/websites/php/#php_1')"
+                                            @click="openLink(docsUrl + '/user_manual/websites/php/#php_1')"
                                         >
                                             {{ $t('php.toExtensionsList') }}
                                         </span>
@@ -179,7 +179,7 @@
                                     class="ml-1 text-xs"
                                     type="primary"
                                     target="_blank"
-                                    :href="globalStore.docsUrl + '/user_manual/websites/php/'"
+                                    :href="docsUrl + '/user_manual/websites/php/'"
                                 >
                                     {{ $t('commons.button.helpDoc') }}
                                 </el-link>
@@ -195,7 +195,7 @@
         <template #footer>
             <span>
                 <el-button @click="handleClose" :disabled="loading">{{ $t('commons.button.cancel') }}</el-button>
-                <el-button type="primary" @click="submit(runtimeForm)" :disabled="loading">
+                <el-button v-permission type="primary" @click="submit(runtimeForm)" :disabled="loading">
                     {{ $t('commons.button.confirm') }}
                 </el-button>
             </span>
@@ -206,7 +206,7 @@
 <script lang="ts" setup>
 import { App } from '@/api/interface/app';
 import { Runtime } from '@/api/interface/runtime';
-import { getAppByKey, getAppDetail, searchApp } from '@/api/modules/app';
+import { getAppByKey, getAppDetail, getCurrentNodeCustomAppConfig, searchApp } from '@/api/modules/app';
 import { CreateRuntime, GetRuntime, ListPHPExtensions, UpdateRuntime } from '@/api/modules/runtime';
 import { Rules } from '@/global/form-rules';
 import i18n from '@/lang';
@@ -215,7 +215,8 @@ import { FormInstance } from 'element-plus';
 import { reactive, ref } from 'vue';
 import { getLabel } from '@/utils/app-store';
 import { useGlobalStore } from '@/composables/useGlobalStore';
-const { globalStore } = useGlobalStore();
+import { resolveRuntimeAppResource } from '@/utils/runtime-app-resource';
+const { docsUrl, isFxplay, isIntl, isOffline, isXpackOrEE } = useGlobalStore();
 
 interface OperateRrops {
     id?: number;
@@ -237,8 +238,9 @@ const appReq = reactive({
     type: 'php',
     page: 1,
     pageSize: 20,
+    resource: 'remote',
 });
-const phpSources = globalStore.isIntl
+const phpSources = isIntl.value
     ? [
           {
               label: i18n.global.t('runtime.default'),
@@ -335,7 +337,23 @@ const changeResource = (resource: string) => {
     }
 };
 
-const searchAppList = (appId: number) => {
+const loadRuntimeAppResource = async () => {
+    if (isOffline.value) {
+        return 'custom';
+    }
+    if (!isXpackOrEE.value) {
+        return 'remote';
+    }
+    try {
+        const res = await getCurrentNodeCustomAppConfig();
+        return resolveRuntimeAppResource(isOffline.value, res.data?.status);
+    } catch (error) {
+        return 'remote';
+    }
+};
+
+const searchAppList = async (appId: number) => {
+    appReq.resource = await loadRuntimeAppResource();
     searchApp(appReq).then((res) => {
         apps.value = res.data.items || [];
         if (res.data && res.data.items && res.data.items.length > 0) {
@@ -491,7 +509,7 @@ const acceptParams = async (props: OperateRrops) => {
     initParam.value = false;
     if (props.mode === 'create') {
         Object.assign(runtime, initData(props.type));
-        if (globalStore.isOffLine) {
+        if (isOffline.value) {
             runtime.resource = 'local';
         } else {
             searchAppList(null);

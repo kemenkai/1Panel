@@ -1,22 +1,42 @@
 import { Layout } from '@/routers/constant';
+import { GlobalStore } from '@/store';
+
+const settingPermissions = ['alert_view', 'backup_view'];
+
+const redirectToAvailableSetting = () => {
+    const globalStore = GlobalStore();
+    if (globalStore.isAdmin) {
+        return '/settings/panel';
+    }
+    if (globalStore.hasPermission('alert_view')) {
+        return '/settings/alert';
+    }
+    if (globalStore.hasPermission('backup_view')) {
+        return '/settings/backupaccount';
+    }
+    return '/settings/panel';
+};
 
 const settingRouter = {
     sort: 12,
     path: '/settings',
     name: 'Setting-Menu',
     component: Layout,
-    redirect: '/settings/panel',
+    redirect: redirectToAvailableSetting,
     meta: {
         title: 'menu.settings',
         icon: 'p-config',
+        permission: settingPermissions,
     },
     children: [
         {
             path: '/settings',
             name: 'Setting',
-            redirect: '/settings/panel',
+            redirect: redirectToAvailableSetting,
             component: () => import('@/views/setting/index.vue'),
-            meta: {},
+            meta: {
+                permission: settingPermissions,
+            },
             children: [
                 {
                     path: 'panel',
@@ -26,8 +46,8 @@ const settingRouter = {
                     meta: {
                         parent: 'menu.settings',
                         title: 'setting.panel',
-                        requiresAuth: true,
                         activeMenu: '/settings',
+                        adminOnly: true,
                     },
                 },
                 {
@@ -38,8 +58,8 @@ const settingRouter = {
                     meta: {
                         parent: 'menu.settings',
                         title: 'xpack.alert.alertNotice',
-                        requiresAuth: true,
                         activeMenu: '/settings',
+                        permission: 'alert_view',
                     },
                 },
                 {
@@ -50,8 +70,8 @@ const settingRouter = {
                     meta: {
                         parent: 'menu.settings',
                         title: 'setting.backupAccount',
-                        requiresAuth: true,
                         activeMenu: '/settings',
+                        permission: 'backup_view',
                     },
                 },
                 {
@@ -62,8 +82,8 @@ const settingRouter = {
                     meta: {
                         parent: 'menu.settings',
                         title: 'setting.license',
-                        requiresAuth: true,
                         activeMenu: '/settings',
+                        adminOnly: true,
                     },
                 },
                 {
@@ -74,8 +94,8 @@ const settingRouter = {
                     meta: {
                         parent: 'menu.settings',
                         title: 'setting.about',
-                        requiresAuth: true,
                         activeMenu: '/settings',
+                        adminOnly: true,
                     },
                 },
                 {
@@ -86,8 +106,8 @@ const settingRouter = {
                     meta: {
                         parent: 'menu.settings',
                         title: 'setting.safe',
-                        requiresAuth: true,
                         activeMenu: '/settings',
+                        adminOnly: true,
                     },
                 },
                 {
@@ -98,8 +118,8 @@ const settingRouter = {
                     meta: {
                         parent: 'menu.settings',
                         title: 'setting.snapshot',
-                        requiresAuth: true,
                         activeMenu: '/settings',
+                        adminOnly: true,
                     },
                 },
                 {
@@ -108,7 +128,6 @@ const settingRouter = {
                     hidden: true,
                     component: () => import('@/views/setting/expired.vue'),
                     meta: {
-                        requiresAuth: true,
                         activeMenu: '/settings',
                         ignoreTab: true,
                     },

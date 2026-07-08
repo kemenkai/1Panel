@@ -25,10 +25,7 @@
                                 />
                             </template>
                         </el-select>
-                        <span
-                            class="input-help"
-                            v-if="dialogData.rowData!.type === 'panelPwdEndTime' && expirationDays === 0"
-                        >
+                        <span class="input-help" v-if="dialogData.rowData!.type === 'panelPwdEndTime' && !isEE">
                             {{ $t('xpack.alert.panelPwdEndTimeRulesHelper') }}
                             <el-link
                                 style="font-size: 12px; margin-left: 5px"
@@ -283,7 +280,7 @@
                                 </el-input>
                             </el-form-item>
 
-                            <span class="whitespace-nowrap input-help w-[4.5rem]">
+                            <span class="whitespace-nowrap input-help !w-[5rem]">
                                 {{ $t('xpack.alert.loginFail') }}
                             </span>
                             <el-form-item prop="count" class="md:flex-1 sm:flex-1">
@@ -322,43 +319,53 @@
                     </el-form-item>
 
                     <el-form-item :label="$t('xpack.alert.alertMethod')" prop="sendMethod">
-                        <el-select class="selectClass" v-model="dialogData.rowData!.sendMethod" multiple cleanable>
-                            <el-option value="mail" :label="$t('xpack.alert.mail')" />
-                            <el-option v-if="!globalStore.isProductPro" value="bark" :label="$t('xpack.alert.bark')" />
+                        <el-select
+                            class="selectClass"
+                            popper-class="alert-config-method-dropdown"
+                            v-model="dialogData.rowData!.sendMethod"
+                            multiple
+                            cleanable
+                            collapse-tags
+                            collapse-tags-tooltip
+                            :max-collapse-tags="3"
+                            @change="handleSendMethodChange"
+                        >
+                            <el-option :value="ALL_SEND_METHOD" :label="$t('commons.table.all')">
+                                <div class="alert-config-option alert-config-option--all">
+                                    <span class="alert-config-option__name">
+                                        {{ $t('commons.table.all') }}
+                                    </span>
+                                </div>
+                            </el-option>
                             <el-option
-                                value="weCom"
-                                v-if="!globalStore.isIntl"
-                                :disabled="!globalStore.isProductPro"
-                                :label="$t('xpack.alert.weCom')"
-                            />
-                            <el-option
-                                value="dingTalk"
-                                v-if="!globalStore.isIntl"
-                                :disabled="!globalStore.isProductPro"
-                                :label="$t('xpack.alert.dingTalk')"
-                            />
-                            <el-option
-                                value="feiShu"
-                                v-if="!globalStore.isIntl"
-                                :disabled="!globalStore.isProductPro"
-                                :label="$t('xpack.alert.feiShu')"
-                            />
-                            <el-option v-if="globalStore.isProductPro" value="bark" :label="$t('xpack.alert.bark')" />
-                            <el-option
-                                value="sms"
-                                v-if="!globalStore.isIntl"
-                                :disabled="!globalStore.isProductPro"
-                                :label="$t('xpack.alert.sms')"
-                            />
+                                v-for="opt in configOptions"
+                                :key="opt.value"
+                                :value="opt.value"
+                                :label="opt.label"
+                                :disabled="isLockedMethodOption(opt)"
+                            >
+                                <div class="alert-config-option">
+                                    <span class="alert-config-option__name" :title="opt.label">
+                                        {{ opt.label }}
+                                    </span>
+                                    <el-tag class="alert-config-option__tag" effect="light" size="small" round>
+                                        {{ opt.typeLabel }}
+                                    </el-tag>
+                                </div>
+                            </el-option>
                         </el-select>
+                        <span class="input-help">
+                            {{
+                                intervalTypes.includes(dialogData.rowData!.type)
+                                    ? $t('xpack.alert.resourceAlertRulesHelper')
+                                    : ''
+                            }}
+                        </span>
                     </el-form-item>
-                    <span class="input-help">
-                        {{
-                            intervalTypes.includes(dialogData.rowData!.type)
-                                ? $t('xpack.alert.resourceAlertRulesHelper')
-                                : ''
-                        }}
-                    </span>
+
+                    <el-form-item v-if="dialogData.title === 'edit' && isEE" :label="$t('commons.table.updater')">
+                        <el-input :model-value="dialogData.rowData?.updateUser || '-'" readonly disabled />
+                    </el-form-item>
                 </el-col>
             </el-row>
         </el-form>
@@ -366,9 +373,10 @@
             <span class="dialog-footer">
                 <el-button :disabled="loading" @click="visible = false">{{ $t('commons.button.cancel') }}</el-button>
                 <el-button
+                    v-permission
                     type="primary"
                     @click="onSubmit(formRef)"
-                    :disabled="dialogData.rowData?.type === 'panelPwdEndTime' && expirationDays === 0 && loading"
+                    :disabled="dialogData.rowData?.type === 'panelPwdEndTime' && loading"
                 >
                     {{ $t('commons.button.confirm') }}
                 </el-button>
@@ -378,21 +386,131 @@
 </template>
 
 <script lang="ts" setup>
-import { reactive, ref } from 'vue';
+import { reactive, ref, onMounted, computed } from 'vue';
 import { ElForm } from 'element-plus';
 import { Alert } from '@/api/interface/alert';
 import { listSSL, listWebsites } from '@/api/modules/website';
-import { CreateAlert, ListDisks, UpdateAlert, ListClams, ListCronJob } from '@/api/modules/alert';
+import { CreateAlert, ListDisks, UpdateAlert, ListClams, ListCronJob, ListAlertConfigs } from '@/api/modules/alert';
 import { MsgSuccess } from '@/utils/message';
 import { Rules } from '@/global/form-rules';
 import i18n from '@/lang';
-import { getSettingInfo } from '@/api/modules/setting';
-import { GlobalStore } from '@/store';
-import { storeToRefs } from 'pinia';
 import { routerToName } from '@/utils/router';
 import { checkCidr, checkCidrV6, checkIpV4V6 } from '@/utils/validate';
-const globalStore = GlobalStore();
-const { isMaster, isProductPro } = storeToRefs(globalStore);
+import { useGlobalStore } from '@/composables/useGlobalStore';
+
+const { isMaster, isProductPro, isEE, isIntl } = useGlobalStore();
+
+const alertConfigs = ref<Alert.AlertConfigInfo[]>([]);
+const loadAlertConfigs = async () => {
+    try {
+        const res = await ListAlertConfigs();
+        alertConfigs.value = res.data?.filter((item: Alert.AlertConfigInfo) => item.type !== 'common') || [];
+    } catch {}
+};
+onMounted(() => {
+    loadAlertConfigs();
+});
+
+const ALL_SEND_METHOD = '__all__';
+
+const configOptions = computed(() => {
+    return alertConfigs.value
+        .filter((c) => c.type !== 'common')
+        .map((c) => ({
+            value: String(c.id),
+            label: getConfigOptionLabel(c),
+            typeLabel: getConfigTypeLabel(c.type),
+            type: c.type,
+            disabled:
+                c.status !== 'Enable' ||
+                ((isIntl.value || !isProductPro.value) && ['weCom', 'dingTalk', 'feiShu', 'sms'].includes(c.type)),
+        }))
+        .sort((a, b) => Number(a.disabled) - Number(b.disabled));
+});
+
+const isLockedMethodOption = (opt: { value: string; disabled: boolean }) => {
+    return opt.disabled && !dialogData.value.rowData?.sendMethod.includes(opt.value);
+};
+
+const allConfigValues = computed(() => configOptions.value.filter((c) => !c.disabled).map((c) => c.value));
+
+const legacyMethodTypeMap: Record<string, string> = {
+    mail: 'email',
+    email: 'email',
+    sms: 'sms',
+    bark: 'bark',
+    weCom: 'weCom',
+    dingTalk: 'dingTalk',
+    feiShu: 'feiShu',
+};
+
+const normalizeMethodValues = (methods: string[]) => {
+    return methods.map((method) => {
+        if (/^\d+$/.test(method)) return method;
+        const configType = legacyMethodTypeMap[method];
+        const matched = configOptions.value.find((item) => item.type === configType);
+        return matched?.value || method;
+    });
+};
+
+const isAllEnabledMethodsSelected = (methods: string[]) => {
+    return (
+        methods.length > 0 &&
+        methods.every((item) => allConfigValues.value.includes(item)) &&
+        allConfigValues.value.every((item) => methods.includes(item))
+    );
+};
+
+const getConfigTypeLabel = (type: string): string => {
+    return i18n.global.t(`xpack.alert.${type}`);
+};
+
+const getConfigOptionLabel = (c: Alert.AlertConfigInfo): string => {
+    try {
+        const cfg = JSON.parse(c.config || '{}');
+        const name = cfg.displayName || cfg.sender || cfg.phone || '';
+        if (c.type === 'email') {
+            return name ? `${name}` : cfg.sender || getConfigTypeLabel(c.type);
+        }
+        if (cfg.webhooks && cfg.webhooks.length > 0) {
+            return cfg.webhooks
+                .map((w: { displayName: string }) => w.displayName || '')
+                .filter(Boolean)
+                .join(', ');
+        }
+        if (cfg.displayName) {
+            return cfg.displayName;
+        }
+        if (c.type === 'sms') {
+            return cfg.phone || getConfigTypeLabel(c.type);
+        }
+    } catch {}
+    return getConfigTypeLabel(c.type);
+};
+
+const lastSendMethod = ref<string[]>([]);
+
+const handleSendMethodChange = (values: string[]) => {
+    if (!dialogData.value.rowData) return;
+    if (values.includes(ALL_SEND_METHOD)) {
+        dialogData.value.rowData.sendMethod = [ALL_SEND_METHOD];
+        lastSendMethod.value = [...allConfigValues.value];
+        return;
+    }
+    const disabledValues = new Set(configOptions.value.filter((c) => c.disabled).map((c) => c.value));
+    const prev = new Set(lastSendMethod.value);
+    const filteredValues = values.filter((value) => !disabledValues.has(value) || prev.has(value));
+    const nonAllValues = filteredValues.filter((item) => item !== ALL_SEND_METHOD);
+    const hasLockedValues = nonAllValues.some((item) => disabledValues.has(item));
+
+    if (!hasLockedValues && isAllEnabledMethodsSelected(nonAllValues)) {
+        dialogData.value.rowData.sendMethod = [ALL_SEND_METHOD];
+        lastSendMethod.value = [...allConfigValues.value];
+        return;
+    }
+    dialogData.value.rowData.sendMethod = nonAllValues;
+    lastSendMethod.value = [...nonAllValues];
+};
 
 interface DialogProps {
     title: string;
@@ -405,7 +523,6 @@ const { t } = i18n.global;
 const loading = ref(false);
 const visible = ref(false);
 const websiteOptions = ref();
-const expirationDays = ref(0);
 const sslOptions = ref([]);
 const diskOptions = ref([]);
 const clamsOptions = ref([]);
@@ -436,8 +553,16 @@ const cronjobTypes = [
 const acceptParams = (params: DialogProps): void => {
     dialogData.value = params;
     dialogData.value.rowData.sendMethod = [];
+    lastSendMethod.value = [];
     if (dialogData.value.rowData.method != '') {
-        dialogData.value.rowData.sendMethod = dialogData.value.rowData.method.split(',');
+        const sendMethods = normalizeMethodValues(dialogData.value.rowData.method.split(',').filter(Boolean));
+        if (isAllEnabledMethodsSelected(sendMethods)) {
+            dialogData.value.rowData.sendMethod = [ALL_SEND_METHOD];
+            lastSendMethod.value = [...allConfigValues.value];
+        } else {
+            dialogData.value.rowData.sendMethod = sendMethods;
+            lastSendMethod.value = [...sendMethods];
+        }
     }
     if (cronjobTypes.includes(dialogData.value.rowData.type)) {
         dialogData.value.rowData.subType = dialogData.value.rowData.type;
@@ -445,6 +570,7 @@ const acceptParams = (params: DialogProps): void => {
     }
     initOptions(dialogData.value.rowData.type, dialogData.value.rowData.subType);
     visible.value = true;
+    console.log(dialogData.value.rowData);
 };
 
 const rules = reactive({
@@ -459,20 +585,28 @@ const rules = reactive({
 });
 
 const allTaskOptions = [
-    { value: 'panelPwdEndTime', label: 'xpack.alert.panelPwdEndTime', show: isMaster.value },
-    { value: 'panelLogin', label: 'xpack.alert.panelLogin', show: isMaster.value },
+    { value: 'panelPwdEndTime', label: 'xpack.alert.panelPwdEndTime', show: isMaster.value && !isEE.value },
     { value: 'sshLogin', label: 'xpack.alert.sshLogin', show: true },
-    { value: 'licenseException', label: 'xpack.alert.licenseException', show: isMaster.value && isProductPro.value },
+    { value: 'panelLogin', label: 'xpack.alert.panelLogin', show: isMaster.value },
+    {
+        value: 'licenseException',
+        label: 'xpack.alert.licenseException',
+        show: isMaster.value && isProductPro.value && !isEE.value,
+    },
     { value: 'ssl', label: 'xpack.alert.ssl', show: true },
     { value: 'siteEndTime', label: 'xpack.alert.siteEndTime', show: true },
-    { value: 'nodeException', label: 'xpack.alert.nodeException', show: isMaster.value && isProductPro.value },
+    {
+        value: 'nodeException',
+        label: 'xpack.alert.nodeException',
+        show: isMaster.value && isProductPro.value,
+    },
     { value: 'cpu', label: 'xpack.alert.cpu', show: true },
     { value: 'memory', label: 'xpack.alert.memory', show: true },
     { value: 'disk', label: 'xpack.alert.disk', show: true },
     { value: 'load', label: 'xpack.alert.load', show: true },
     { value: 'cronJob', label: 'xpack.alert.cronjob', show: true },
     { value: 'clams', label: 'xpack.alert.clams', show: true },
-    { value: 'panelUpdate', label: 'xpack.alert.panelUpdate', show: isMaster.value },
+    { value: 'panelUpdate', label: 'xpack.alert.panelUpdate', show: isMaster.value && !isEE.value },
 ];
 
 function checkRange(value: any, min: number, max: number, callback: any) {
@@ -540,6 +674,9 @@ function checkIPs(rule: any, value: any, callback: any) {
             if (item === '') {
                 continue;
             }
+            if (item.includes('0.0.0.0') || item.includes('::')) {
+                return callback(new Error(i18n.global.t('firewall.addressFormatError')));
+            }
             if (item.indexOf('/') !== -1) {
                 if (item.indexOf(':') !== -1) {
                     if (checkCidrV6(item)) {
@@ -562,9 +699,6 @@ const initOptions = (type: string, subType: string) => {
     }
     if (type === 'siteEndTime') {
         loadWebsites();
-    }
-    if (type === 'panelPwdEndTime') {
-        loadSettings();
     }
     if (diskTypes.includes(type)) {
         loadDisks();
@@ -720,11 +854,6 @@ const loadCronJob = async (jobType: string) => {
     dialogData.value.rowData.project = dialogData.value.rowData.project || String(cronJobOptions.value[0].id);
 };
 
-const loadSettings = async () => {
-    const res = await getSettingInfo();
-    expirationDays.value = Number(res.data.expirationDays);
-};
-
 const formatTitle = (row: Alert.AlertInfo) => {
     if (row.type === 'cronJob') {
         row.type = row.subType;
@@ -798,7 +927,10 @@ const onSubmit = async (formEl: FormInstance | undefined) => {
     await formEl.validate(async (valid) => {
         if (!valid) return;
         if (!dialogData.value.rowData) return;
-        dialogData.value.rowData.method = dialogData.value.rowData.sendMethod.join(',');
+        const sendMethods = dialogData.value.rowData.sendMethod.includes(ALL_SEND_METHOD)
+            ? allConfigValues.value
+            : dialogData.value.rowData.sendMethod;
+        dialogData.value.rowData.method = sendMethods.join(',');
         dialogData.value.rowData.title = formatTitle(dialogData.value.rowData);
         if (dialogData.value.rowData.type === 'cronJob') {
             dialogData.value.rowData.type = dialogData.value.rowData.subType;
@@ -840,5 +972,38 @@ defineExpose({
     margin-right: 10px;
     font-size: 12px;
     margin-top: 5px;
+}
+
+.alert-config-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    min-width: 0;
+}
+
+.alert-config-option__name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.alert-config-option__tag {
+    flex: 0 0 auto;
+}
+
+.alert-config-option--all {
+    justify-content: flex-start;
+}
+
+:global(.alert-config-method-dropdown .el-select-dropdown__item) {
+    padding-right: 52px;
+}
+
+:global(.alert-config-method-dropdown .el-select-dropdown__item.is-selected::after) {
+    right: 16px;
 }
 </style>

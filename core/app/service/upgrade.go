@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -20,8 +19,10 @@ import (
 	"github.com/1Panel-dev/1Panel/core/utils/cmd"
 	"github.com/1Panel-dev/1Panel/core/utils/common"
 	"github.com/1Panel-dev/1Panel/core/utils/controller"
+	"github.com/1Panel-dev/1Panel/core/utils/ctl_conf"
 	"github.com/1Panel-dev/1Panel/core/utils/files"
 	"github.com/1Panel-dev/1Panel/core/utils/req_helper"
+	upgradeUtil "github.com/1Panel-dev/1Panel/core/utils/upgrade"
 	"github.com/1Panel-dev/1Panel/core/utils/xpack"
 )
 
@@ -85,7 +86,7 @@ func NewIUpgradeService() IUpgradeService {
 }
 
 func (u *UpgradeService) SearchUpgrade() (*dto.UpgradeInfo, error) {
-	if global.CONF.Base.IsOffLine {
+	if global.CONF.Base.IsOffline {
 		return &dto.UpgradeInfo{}, nil
 	}
 	var upgrade dto.UpgradeInfo
@@ -172,7 +173,7 @@ func (u *UpgradeService) Upgrade(req dto.Upgrade) error {
 	fileName := fmt.Sprintf("1panel-%s-%s-%s.tar.gz", req.Version, "linux", itemArch)
 	_ = settingRepo.Update("SystemStatus", "Upgrading")
 	go func() {
-		oldLang := common.LoadParams("LANGUAGE")
+		oldLang := ctl_conf.Load("LANGUAGE")
 		if err := files.DownloadFileWithProxyStream(downloadPath+"/"+fileName, downloadDir+"/"+fileName); err != nil {
 			global.LOG.Errorf("download service file failed, err: %v", err)
 			_ = settingRepo.Update("SystemStatus", "Free")
@@ -218,12 +219,12 @@ func (u *UpgradeService) Upgrade(req dto.Upgrade) error {
 			u.handleRollback(originalDir, 2, svcInfo)
 			return
 		}
-		if _, err := cmd.RunDefaultWithStdoutBashCf("sed -i -e 's#BASE_DIR=.*#BASE_DIR=%s#g' /usr/local/bin/1pctl", global.CONF.Base.InstallDir); err != nil {
+		if err := ctl_conf.UpdateInFile("/usr/local/bin/1pctl", "BASE_DIR", global.CONF.Base.InstallDir); err != nil {
 			global.LOG.Errorf("upgrade basedir in 1pctl failed, err: %v", err)
 			u.handleRollback(originalDir, 2, svcInfo)
 			return
 		}
-		if _, err := cmd.RunDefaultWithStdoutBashCf("sed -i -e 's#LANGUAGE=.*#LANGUAGE=%s#g' /usr/local/bin/1pctl", oldLang); err != nil {
+		if err := ctl_conf.UpdateInFile("/usr/local/bin/1pctl", "LANGUAGE", oldLang); err != nil {
 			global.LOG.Errorf("upgrade basedir in 1pctl failed, err: %v", err)
 			u.handleRollback(originalDir, 2, svcInfo)
 			return
@@ -258,7 +259,7 @@ func (u *UpgradeService) Upgrade(req dto.Upgrade) error {
 
 		global.LOG.Info("upgrade successful!")
 		dropBackupCopies()
-		xpack.AutoUpgradeWithMaster()
+		xpack.MultiNodeProvider.AutoUpgradeWithMaster()
 		go writeLogs(req.Version)
 		_ = settingRepo.Update("SystemVersion", req.Version)
 		_ = global.AgentDB.Model(&model.Setting{}).Where("key = ?", "SystemVersion").Updates(map[string]interface{}{"value": req.Version}).Error
@@ -312,11 +313,11 @@ func (u *UpgradeService) LoadRelease() ([]dto.ReleasesNotes, error) {
 	if err != nil {
 		return notes, err
 	}
+	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return notes, err
 	}
-	defer resp.Body.Close()
 	var nodeItem noteHelper
 	if err := json.Unmarshal(body, &nodeItem); err != nil {
 		return notes, err
@@ -532,7 +533,7 @@ func (u *UpgradeService) loadReleaseNotes(path string) (string, error) {
 }
 
 func loadArch() (string, error) {
-	std, err := cmd.RunDefaultWithStdoutBashC("uname -a")
+	std, err := cmd.NewCommandMgr().RunWithStdout("uname", "-a")
 	if err != nil {
 		return "", fmt.Errorf("std: %s, err: %s", std, err.Error())
 	}
@@ -559,29 +560,7 @@ func loadArch() (string, error) {
 
 func dropBackupCopies() {
 	backupCopies, _ := settingRepo.GetValueByKey("UpgradeBackupCopies")
-	copies, _ := strconv.Atoi(backupCopies)
-	if copies == 0 {
-		return
-	}
-	backupDir := path.Join(global.CONF.Base.InstallDir, "1panel/tmp/upgrade")
-	upgradeDir, err := os.ReadDir(backupDir)
-	if err != nil {
+	if err := upgradeUtil.DropBackupCopies(global.CONF.Base.InstallDir, backupCopies); err != nil {
 		global.LOG.Errorf("read upgrade dir failed, err: %v", err)
-		return
-	}
-	var versions []string
-	for _, item := range upgradeDir {
-		if item.IsDir() && strings.HasPrefix(item.Name(), "v") {
-			versions = append(versions, item.Name())
-		}
-	}
-	if len(versions) <= copies {
-		return
-	}
-	sort.Slice(versions, func(i, j int) bool {
-		return common.ComparePanelVersion(versions[i], versions[j])
-	})
-	for i := copies; i < len(versions); i++ {
-		_ = os.RemoveAll(backupDir + "/" + versions[i])
 	}
 }

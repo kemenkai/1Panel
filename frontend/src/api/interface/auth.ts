@@ -13,6 +13,7 @@ export namespace Login {
     }
     export interface ResLogin {
         name: string;
+        role: string;
         token: string;
         mfaStatus: string;
         mfaSession: string;
@@ -38,8 +39,54 @@ export namespace Login {
         menuTabs: string;
         panelName: string;
         theme: string;
-        isOffLine: boolean;
+        isOffline: boolean;
+        isEnterprise: boolean;
         needCaptcha: boolean;
         passkeySetting: boolean;
+    }
+
+    export interface AuthInfo {
+        id: number;
+        name: string;
+        mfaStatus: string;
+        mfaInterval: number;
+        role: string;
+        permissions: string[];
+        masterOnlyPermissions?: string[];
+        nodeRoles: Array<{ nodeId: number; nodeName: string; roleId: number; roleName: string }>;
+
+        apiInterfaceStatus: string;
+        apiKey: string;
+        ipWhiteList: string;
+        apiKeyValidityTime: number;
+    }
+    export interface AuthInfoUpdate {
+        id: number;
+        name: string;
+        password: string;
+        oldPassword: string;
+    }
+    export interface MFARequest {
+        title: string;
+        interval: number;
+    }
+    export interface MFAInfo {
+        secret: string;
+        qrImage: string;
+    }
+    export interface MFABind {
+        secret: string;
+        code: string;
+        interval: number;
+    }
+    export interface ApiConfig {
+        apiInterfaceStatus: string;
+        apiKey: string;
+        ipWhiteList: string;
+        apiKeyValidityTime: number;
+    }
+    export interface PasswordUpdate {
+        oldPassword: string;
+        newPassword: string;
     }
 }

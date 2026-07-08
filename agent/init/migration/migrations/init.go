@@ -99,7 +99,7 @@ var InitSetting = &gormigrate.Migration{
 	ID: "20240722-init-setting",
 	Migrate: func(tx *gorm.DB) error {
 		global.CONF.Base.EncryptKey = common.RandStr(16)
-		nodeInfo, err := xpack.LoadNodeInfo(true)
+		nodeInfo, err := xpack.MultiNodeProvider.LoadNodeInfo(true)
 		if err != nil {
 			return err
 		}
@@ -235,7 +235,7 @@ var InitDefaultCA = &gormigrate.Migration{
 		if _, err := caService.Create(request.WebsiteCACreate{
 			CommonName:       "1Panel-CA",
 			Country:          "CN",
-			KeyType:          "P256",
+			KeyType:          "EC256",
 			Name:             "1Panel",
 			Organization:     "FIT2CLOUD",
 			OrganizationUint: "1Panel",
@@ -391,16 +391,20 @@ var InitAlertConfig = &gormigrate.Migration{
 	Migrate: func(tx *gorm.DB) error {
 		records := []model.AlertConfig{
 			{
-				Type:   "sms",
-				Title:  "xpack.alert.smsConfig",
-				Status: "Enable",
-				Config: `{"alertDailyNum":50}`,
+				Type:       "sms",
+				Title:      "xpack.alert.smsConfig",
+				Status:     "Enable",
+				Config:     `{"alertDailyNum":50}`,
+				CreateUser: "system",
+				UpdateUser: "system",
 			},
 			{
-				Type:   "common",
-				Title:  "xpack.alert.commonConfig",
-				Status: "Enable",
-				Config: `{"isOffline":"Disable","alertSendTimeRange":{"noticeAlert":{"sendTimeRange":"08:00:00 - 23:59:59","type":["ssl","siteEndTime","panelPwdEndTime","panelUpdate"]},"resourceAlert":{"sendTimeRange":"00:00:00 - 23:59:59","type":["clams","cronJob","cpu","memory","load","disk"]}}}`,
+				Type:       "common",
+				Title:      "xpack.alert.commonConfig",
+				Status:     "Enable",
+				Config:     `{"isOffline":"Disable","alertSendTimeRange":{"noticeAlert":{"sendTimeRange":"08:00:00 - 23:59:59","type":["ssl","siteEndTime","panelPwdEndTime","panelUpdate"]},"resourceAlert":{"sendTimeRange":"00:00:00 - 23:59:59","type":["clams","cronJob","cpu","memory","load","disk"]}}}`,
+				CreateUser: "system",
+				UpdateUser: "system",
 			},
 		}
 		for _, r := range records {
@@ -477,6 +481,162 @@ var AddColumnToAlert = &gormigrate.Migration{
 		}
 		return nil
 	},
+}
+
+var MigrateAlertMethodConfigIDs = &gormigrate.Migration{
+	ID: "20251001-migrate-alert-method-config-ids",
+	Migrate: func(tx *gorm.DB) error {
+		if err := global.AlertDB.AutoMigrate(&model.Alert{}, &model.AlertLog{}, &model.AlertTask{}, &model.AlertConfig{}); err != nil {
+			return err
+		}
+		if err := migrateAlertMethodConfigIDs(tx); err != nil {
+			return err
+		}
+		return nil
+	},
+}
+
+var MigrateAlertLogTaskMethodConfigIDs = &gormigrate.Migration{
+	ID: "20260608-migrate-alert-log-task-method-config-ids",
+	Migrate: func(tx *gorm.DB) error {
+		if err := global.AlertDB.AutoMigrate(&model.AlertLog{}, &model.AlertTask{}, &model.AlertConfig{}); err != nil {
+			return err
+		}
+		if err := migrateAlertMethodRecords(tx, &model.AlertLog{}); err != nil {
+			return err
+		}
+		if err := migrateAlertMethodRecords(tx, &model.AlertTask{}); err != nil {
+			return err
+		}
+		return nil
+	},
+}
+
+var AddAlertAuditUser = &gormigrate.Migration{
+	ID: "20260602-add-alert-audit-user",
+	Migrate: func(tx *gorm.DB) error {
+		return global.AlertDB.AutoMigrate(&model.Alert{}, &model.AlertConfig{})
+	},
+}
+
+func migrateAlertMethodConfigIDs(tx *gorm.DB) error {
+	if err := tx.Model(&model.AlertConfig{}).Where("type = ?", "mail").Update("type", constant.EmailConfig).Error; err != nil {
+		return err
+	}
+
+	configIDs, err := loadAlertConfigIDs(tx)
+	if err != nil {
+		return err
+	}
+
+	var alerts []model.Alert
+	if err := tx.Find(&alerts).Error; err != nil {
+		return err
+	}
+	for _, alert := range alerts {
+		method := migrateAlertMethodValue(alert.Method, alertLegacyMethodTypeMap(), configIDs)
+		if method == alert.Method {
+			continue
+		}
+		if err := tx.Model(&model.Alert{}).Where("id = ?", alert.ID).Update("method", method).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func migrateAlertMethodRecords(tx *gorm.DB, modelValue interface{}) error {
+	configIDs, err := loadAlertConfigIDs(tx)
+	if err != nil {
+		return err
+	}
+
+	switch modelValue.(type) {
+	case *model.AlertLog:
+		var logs []model.AlertLog
+		if err := tx.Find(&logs).Error; err != nil {
+			return err
+		}
+		for _, item := range logs {
+			method := migrateAlertMethodValue(item.Method, alertLegacyMethodTypeMap(), configIDs)
+			if method == item.Method {
+				continue
+			}
+			if err := tx.Model(&model.AlertLog{}).Where("id = ?", item.ID).Update("method", method).Error; err != nil {
+				return err
+			}
+		}
+	case *model.AlertTask:
+		var tasks []model.AlertTask
+		if err := tx.Find(&tasks).Error; err != nil {
+			return err
+		}
+		for _, item := range tasks {
+			method := migrateAlertMethodValue(item.Method, alertLegacyMethodTypeMap(), configIDs)
+			if method == item.Method {
+				continue
+			}
+			if err := tx.Model(&model.AlertTask{}).Where("id = ?", item.ID).Update("method", method).Error; err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func loadAlertConfigIDs(tx *gorm.DB) (map[string]string, error) {
+	configIDs := map[string]string{}
+	for _, configType := range alertLegacyMethodTypeMap() {
+		if _, ok := configIDs[configType]; ok {
+			continue
+		}
+		var config model.AlertConfig
+		if err := tx.Where("type = ?", configType).Order("id ASC").First(&config).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				continue
+			}
+			return nil, err
+		}
+		configIDs[configType] = strconv.Itoa(int(config.ID))
+	}
+	return configIDs, nil
+}
+
+func alertLegacyMethodTypeMap() map[string]string {
+	return map[string]string{
+		"mail":            constant.Email,
+		constant.Email:    constant.Email,
+		constant.SMS:      constant.SMS,
+		constant.Bark:     constant.Bark,
+		constant.WeChat:   constant.WeCom,
+		constant.WeCom:    constant.WeCom,
+		constant.DingTalk: constant.DingTalk,
+		constant.FeiShu:   constant.FeiShu,
+	}
+}
+
+func migrateAlertMethodValue(method string, typeMap map[string]string, configIDs map[string]string) string {
+	items := strings.Split(method, ",")
+	next := make([]string, 0, len(items))
+	seen := map[string]struct{}{}
+	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		configType, ok := typeMap[item]
+		if ok {
+			if id, exists := configIDs[configType]; exists {
+				item = id
+			}
+		}
+		if _, exists := seen[item]; exists {
+			continue
+		}
+		seen[item] = struct{}{}
+		next = append(next, item)
+	}
+	return strings.Join(next, ",")
 }
 
 var UpdateWebsiteSSL = &gormigrate.Migration{
@@ -848,6 +1008,23 @@ var InitIptablesStatus = &gormigrate.Migration{
 		if err := tx.Create(&model.Setting{Key: "IptablesOutputStatus", Value: constant.StatusDisable}).Error; err != nil {
 			return err
 		}
+		if err := tx.Create(&model.Setting{Key: constant.FirewallPortWhiteList, Value: constant.FirewallPortWhiteListValue}).Error; err != nil {
+			return err
+		}
+		return nil
+	},
+}
+
+var InitFirewallPortWhiteList = &gormigrate.Migration{
+	ID: "20260601-init-firewall-port-whitelist",
+	Migrate: func(tx *gorm.DB) error {
+		var setting model.Setting
+		if err := tx.Where("key = ?", constant.FirewallPortWhiteList).First(&setting).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return tx.Create(&model.Setting{Key: constant.FirewallPortWhiteList, Value: constant.FirewallPortWhiteListValue}).Error
+			}
+			return err
+		}
 		return nil
 	},
 }
@@ -1007,6 +1184,13 @@ var InitAgentAccountModelPool = &gormigrate.Migration{
 			return err
 		}
 		return migrationutils.MigrateAgentAccountModelPool(tx)
+	},
+}
+
+var AddAgentAccountMasterID = &gormigrate.Migration{
+	ID: "20260401-add-agent-account-master-id",
+	Migrate: func(tx *gorm.DB) error {
+		return tx.AutoMigrate(&model.AgentAccount{})
 	},
 }
 
@@ -1297,5 +1481,58 @@ var AddWindowsServiceTable = &gormigrate.Migration{
 		return tx.Model(&model.WindowsService{}).
 			Where("register_service = ? OR register_service IS NULL", false).
 			Update("register_service", true).Error
+	},
+}
+
+// MigrateLegoV5 normalizes data persisted under lego v4 so that lego v5 can read it.
+//
+// Two things changed in lego v5 that affect existing rows:
+//
+//  1. certcrypto.KeyType string values were renamed:
+//     "P256"->"EC256", "P384"->"EC384",
+//     "2048"->"RSA2048", "3072"->"RSA3072", "4096"->"RSA4096", "8192"->"RSA8192".
+//     We update every key_type column we own to the new form.
+//
+//  2. DnsPod provider was removed from upstream lego v5; the frontend already
+//     marked it deprecated. Existing DnsPod website_dns_accounts rows are kept
+//     so the user can decide what to do, but any website_ssls still pointing
+//     at a DnsPod account would fail to renew. We log a warning row count and
+//     leave deletion to the operator.
+var MigrateLegoV5 = &gormigrate.Migration{
+	ID: "20260523-migrate-lego-v5",
+	Migrate: func(tx *gorm.DB) error {
+		keyTypeMap := map[string]string{
+			"P256": "EC256",
+			"P384": "EC384",
+			"2048": "RSA2048",
+			"3072": "RSA3072",
+			"4096": "RSA4096",
+			"8192": "RSA8192",
+		}
+		for old, neu := range keyTypeMap {
+			if err := tx.Model(&model.WebsiteAcmeAccount{}).
+				Where("key_type = ?", old).
+				Update("key_type", neu).Error; err != nil {
+				return fmt.Errorf("migrate WebsiteAcmeAccount.key_type %s->%s: %w", old, neu, err)
+			}
+			if err := tx.Model(&model.WebsiteSSL{}).
+				Where("key_type = ?", old).
+				Update("key_type", neu).Error; err != nil {
+				return fmt.Errorf("migrate WebsiteSSL.key_type %s->%s: %w", old, neu, err)
+			}
+			if err := tx.Model(&model.WebsiteCA{}).
+				Where("key_type = ?", old).
+				Update("key_type", neu).Error; err != nil {
+				return fmt.Errorf("migrate WebsiteCA.key_type %s->%s: %w", old, neu, err)
+			}
+		}
+
+		var dnsPodCount int64
+		_ = tx.Model(&model.WebsiteDnsAccount{}).Where("type = ?", "DnsPod").Count(&dnsPodCount).Error
+		if dnsPodCount > 0 {
+			global.LOG.Warnf("lego v5 removed the DnsPod provider; %d existing DnsPod DNS account(s) will not be usable for renewal -- please switch them to TencentCloud", dnsPodCount)
+		}
+
+		return nil
 	},
 }

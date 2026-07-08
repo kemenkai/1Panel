@@ -21,6 +21,7 @@ import (
 	"github.com/1Panel-dev/1Panel/core/cmd/server/docs"
 	"github.com/1Panel-dev/1Panel/core/constant"
 	"github.com/1Panel-dev/1Panel/core/global"
+	psessionUtils "github.com/1Panel-dev/1Panel/core/init/session/psession"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -60,6 +61,11 @@ func OperationLog() gin.HandlerFunc {
 		}
 		operationDic, hasPath := swagger[record.Path]
 		if !hasPath {
+			if fullPath := normalizeOperationPath(c.FullPath()); fullPath != "" {
+				operationDic, hasPath = swagger[fullPath]
+			}
+		}
+		if !hasPath {
 			c.Next()
 			return
 		}
@@ -89,7 +95,7 @@ func OperationLog() gin.HandlerFunc {
 			}
 		}
 		needAgentResolve := len(operationDic.BeforeFunctions) != 0 && len(currentNode) != 0 && currentNode != "local" && !strings.HasPrefix(record.Path, "/core")
-		allowCoreFallback := strings.HasPrefix(record.Path, "/core/xpack") || !willProxy(c.Request.URL.Path, currentNode) || len(currentNode) == 0 || currentNode == "local"
+		allowCoreFallback := strings.HasPrefix(record.Path, "/core/xpack") || !ShouldProxyToAgent(c.Request.URL.Path) || len(currentNode) == 0 || currentNode == "local"
 		if needAgentResolve {
 			c.Request.Header.Set(headerNeedOperationResolve, "1")
 			defer func() {
@@ -100,12 +106,14 @@ func OperationLog() gin.HandlerFunc {
 		writer := responseBodyWriter{
 			ResponseWriter: c.Writer,
 			body:           &bytes.Buffer{},
-			captureBody:    shouldCaptureResponseBody(c.Request.URL.Path),
+			captureBody:    !strings.Contains(strings.ToLower(c.Request.URL.Path), "download"),
 		}
 		c.Writer = &writer
 		now := time.Now()
 
 		c.Next()
+
+		record.User = LoadOperationUser(c)
 
 		if len(operationDic.BeforeFunctions) != 0 {
 			if needAgentResolve {
@@ -171,6 +179,25 @@ func OperationLog() gin.HandlerFunc {
 			global.LOG.Errorf("create operation record failed, err: %v", err)
 		}
 	}
+}
+
+func LoadOperationUser(c *gin.Context) string {
+	sessionUser, ok := c.Get(psessionUtils.GinContextSessionUserKey)
+	if ok {
+		psession, ok := sessionUser.(psessionUtils.SessionUser)
+		if ok {
+			return psession.Name
+		}
+	}
+	apiUsername, ok := c.Get("API_AUTH_USERNAME")
+	if !ok {
+		return ""
+	}
+	username, ok := apiUsername.(string)
+	if !ok {
+		return ""
+	}
+	return username
 }
 
 func fillOperationDetail(operationDic *operationJson, formatMap map[string]interface{}) {
@@ -252,16 +279,8 @@ func (r *responseBodyWriter) Write(b []byte) (int, error) {
 	return r.ResponseWriter.Write(b)
 }
 
-func shouldCaptureResponseBody(reqPath string) bool {
-	reqPath = strings.ToLower(reqPath)
-	if strings.Contains(reqPath, "download") {
-		return false
-	}
-	return true
-}
-
 func loadLogInfo(path string) string {
-	path = replaceStr(path, "/api/v2", "/core", "/xpack")
+	path = replaceStr(path, "/api/v2", "/core", "/xpack", "/enterprise")
 	if !strings.Contains(path, "/") {
 		return ""
 	}
@@ -272,11 +291,19 @@ func loadLogInfo(path string) string {
 	return pathArrays[1]
 }
 
+func normalizeOperationPath(reqPath string) string {
+	pathItem := strings.TrimPrefix(reqPath, "/api/v2")
+	pathItem = strings.TrimPrefix(pathItem, "/api/v2/core")
+	return pathItem
+}
+
 func newDB(pathItem string) (*gorm.DB, error) {
 	dbFile := ""
 	switch {
 	case strings.HasPrefix(pathItem, "/core/xpack") || strings.HasPrefix(pathItem, "/xpack"):
 		dbFile = path.Join(global.CONF.Base.InstallDir, "1panel/db/xpack.db")
+	case strings.HasPrefix(pathItem, "/core/enterprise") || strings.HasPrefix(pathItem, "/enterprise"):
+		dbFile = path.Join(global.CONF.Base.InstallDir, "1panel/db/enterprise.db")
 	case strings.HasPrefix(pathItem, "/core"):
 		dbFile = path.Join(global.CONF.Base.InstallDir, "1panel/db/core.db")
 	default:
@@ -385,19 +412,6 @@ func hasAllResolvedData(values map[string]interface{}, beforeFunctions []functio
 			continue
 		}
 		return false
-	}
-	return true
-}
-
-func willProxy(reqPath, currentNode string) bool {
-	if strings.HasPrefix(reqPath, "/1panel/swagger") || !strings.HasPrefix(reqPath, "/api/v2") {
-		return false
-	}
-	if strings.HasPrefix(reqPath, "/api/v2/core") && !strings.HasPrefix(reqPath, "/api/v2/core/xpack") {
-		return false
-	}
-	if !strings.HasPrefix(reqPath, "/api/v2/core") && (currentNode == "local" || len(currentNode) == 0) {
-		return true
 	}
 	return true
 }

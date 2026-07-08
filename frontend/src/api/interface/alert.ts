@@ -14,6 +14,8 @@ export namespace Alert {
         sendCount: number;
         sendMethod: string[];
         advancedParams: string;
+        createUser?: string;
+        updateUser?: string;
     }
 
     export interface AlertDetail {
@@ -138,6 +140,18 @@ export namespace Alert {
         title: string;
         config: string;
         status: string;
+        createUser?: string;
+        updateUser?: string;
+    }
+
+    export interface AlertConfigPageReq {
+        page: number;
+        pageSize: number;
+        excludeTypes?: string[];
+    }
+
+    export interface AlertConfigFilterReq {
+        excludeTypes?: string[];
     }
 
     export interface AlertConfigUpdateReq {
@@ -146,6 +160,7 @@ export namespace Alert {
         title: string;
         config: string;
         status: string;
+        displayName: string;
     }
 
     export interface AlertConfigTest {
@@ -188,6 +203,7 @@ export namespace Alert {
             port?: number;
             encryption?: string;
             recipient?: string;
+            recipients?: string[];
         };
     }
 
@@ -197,6 +213,7 @@ export namespace Alert {
         title: string;
         status: string;
         config: {
+            displayName?: string;
             phone?: string;
             alertDailyNum?: number;
         };
@@ -210,6 +227,12 @@ export namespace Alert {
         config: {
             displayName?: string;
             url?: string;
+            webhooks?: WebhookItem[];
         };
+    }
+
+    export interface WebhookItem {
+        displayName: string;
+        url: string;
     }
 }

@@ -665,7 +665,7 @@ func buildNginx(parentTask *task.Task) error {
 	logStr := fmt.Sprintf("%s %s", i18n.GetMsgByKey("TaskBuild"), i18n.GetMsgByKey("Image"))
 	parentTask.LogStart(logStr)
 	cmdMgr := cmd.NewCommandMgr(cmd.WithTask(*parentTask), cmd.WithTimeout(60*time.Minute))
-	if err = cmdMgr.RunBashCf("docker compose -f %s build", nginxInstall.GetComposePath()); err != nil {
+	if err = cmdMgr.Run("docker", "compose", "-f", nginxInstall.GetComposePath(), "build"); err != nil {
 		return err
 	}
 	parentTask.LogSuccess(logStr)
@@ -681,6 +681,9 @@ func upgradeInstall(req request.AppInstallUpgrade) error {
 	detail, err := appDetailRepo.GetFirst(repo.WithByID(req.DetailID))
 	if err != nil {
 		return err
+	}
+	if install.App.Key == vllmAppKeyForUpgrade && !isVllmUpgradeVersionAllowed(install.Version, detail.Version, loadVllmImageFromEnv(install.Env)) {
+		return errors.New("vLLM can only upgrade within the same image type")
 	}
 	if install.Version == detail.Version {
 		return errors.New("two version is same")
@@ -748,9 +751,25 @@ func upgradeInstall(req request.AppInstallUpgrade) error {
 		if err != nil {
 			return err
 		}
-		dockerCLi, _ := docker.NewClient()
+		if install.App.Key == vllmAppKeyForUpgrade {
+			envs := make(map[string]interface{})
+			if err = json.Unmarshal([]byte(install.Env), &envs); err != nil {
+				return err
+			}
+			image := buildVllmUpgradeImage(loadVllmImageFromEnv(install.Env), oldVersion, detail.Version)
+			envs[vllmImageEnvKey] = image
+			paramByte, err := json.Marshal(envs)
+			if err != nil {
+				return err
+			}
+			install.Env = string(paramByte)
+			content = setVllmImageInEnvContent(content, image)
+		}
 		if req.PullImage {
 			composeContent := []byte(detail.DockerCompose)
+			if install.App.Key == vllmAppKeyForUpgrade {
+				composeContent = []byte(install.DockerCompose)
+			}
 			if req.DockerCompose != "" {
 				composeContent = []byte(req.DockerCompose)
 			}
@@ -758,6 +777,11 @@ func upgradeInstall(req request.AppInstallUpgrade) error {
 			if err != nil {
 				return err
 			}
+			dockerCLi, err := docker.NewClient()
+			if err != nil {
+				return err
+			}
+			defer dockerCLi.Close()
 			for _, image := range images {
 				t.Log(i18n.GetWithName("PullImageStart", image))
 				if err = dockerCLi.PullImageWithProcess(t, image); err != nil {
@@ -768,8 +792,7 @@ func upgradeInstall(req request.AppInstallUpgrade) error {
 			}
 		}
 
-		command := exec.Command("/bin/bash", "-c", fmt.Sprintf("cp -rn %s/* %s || true", detailDir, install.GetPath()))
-		_, _ = command.CombinedOutput()
+		_ = copyAppDetailMissing(fileOp, detailDir, install.GetPath())
 		if install.App.Key == constant.AppOpenresty {
 			installBuildDir := path.Join(install.GetPath(), "build")
 			detailBuildDir := path.Join(detailDir, "build")
@@ -808,9 +831,13 @@ func upgradeInstall(req request.AppInstallUpgrade) error {
 			return err
 		}
 		if req.DockerCompose == "" {
-			newCompose, err = getUpgradeCompose(install, detail)
-			if err != nil {
-				return err
+			if install.App.Key == vllmAppKeyForUpgrade {
+				newCompose = install.DockerCompose
+			} else {
+				newCompose, err = getUpgradeCompose(install, detail)
+				if err != nil {
+					return err
+				}
 			}
 		} else {
 			newCompose = req.DockerCompose
@@ -885,7 +912,7 @@ func upgradeInstall(req request.AppInstallUpgrade) error {
 		}
 	}
 
-	upgradeTask.AddSubTaskWithOps(task.GetTaskName(install.Name, task.TaskScopeApp, task.TaskUpgrade), upgradeApp, rollBackApp, 0, 1*time.Hour)
+	upgradeTask.AddSubTaskWithOps(task.GetTaskName(install.Name, task.TaskUpgrade, task.TaskScopeApp), upgradeApp, rollBackApp, 0, 1*time.Hour)
 
 	go func() {
 		err = upgradeTask.Execute()
@@ -1129,7 +1156,7 @@ func runScript(task *task.Task, appInstall *model.AppInstall, operate string) er
 	task.LogStart(logStr)
 
 	cmdMgr := cmd.NewCommandMgr(cmd.WithTimeout(10*time.Minute), cmd.WithWorkDir(workDir))
-	if err := cmdMgr.RunBashC(scriptPath); err != nil {
+	if err := cmdMgr.Run("bash", scriptPath); err != nil {
 		task.LogFailedWithErr(logStr, err)
 		return err
 	}
@@ -1178,11 +1205,12 @@ func upApp(task *task.Task, appInstall *model.AppInstall, pullImages bool) error
 			if err != nil {
 				return err
 			}
-			imagePrefix := xpack.GetImagePrefix()
+			imagePrefix := xpack.MultiNodeProvider.GetImagePrefix()
 			dockerCLi, err := docker.NewClient()
 			if err != nil {
 				return err
 			}
+			defer dockerCLi.Close()
 			for _, image := range images {
 				if imagePrefix != "" {
 					lastSlashIndex := strings.LastIndex(image, "/")
@@ -1778,7 +1806,7 @@ func addDockerComposeCommonParam(composeMap map[string]interface{}, serviceName 
 	if !serviceValid {
 		return buserr.New("ErrFileParse")
 	}
-	imagePreFix := xpack.GetImagePrefix()
+	imagePreFix := xpack.MultiNodeProvider.GetImagePrefix()
 	if imagePreFix != "" {
 		for _, service := range services {
 			serviceValue := service.(map[string]interface{})
@@ -1933,6 +1961,39 @@ func isHostModel(dockerCompose string) bool {
 		}
 	}
 	return false
+}
+
+func copyAppDetailMissing(fileOp files.FileOp, srcDir, dstDir string) error {
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		srcPath := path.Join(srcDir, entry.Name())
+		dstPath := path.Join(dstDir, entry.Name())
+		if !fileOp.Stat(dstPath) {
+			if entry.IsDir() {
+				if err := fileOp.CopyDir(srcPath, dstDir); err != nil {
+					return err
+				}
+				continue
+			}
+			if err := fileOp.CopyFile(srcPath, dstDir); err != nil {
+				return err
+			}
+			continue
+		}
+		if !entry.IsDir() {
+			continue
+		}
+		if err := copyAppDetailMissing(fileOp, srcPath, dstPath); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func getRestartPolicy(yml string) string {
@@ -2121,7 +2182,7 @@ func handleSSLConfig(appInstall *model.AppInstall, hasDefaultWebsite bool, sslRe
 		caRequest := request.WebsiteCAObtain{
 			ID:      ca.ID,
 			Domains: "localhost",
-			KeyType: "4096",
+			KeyType: "RSA4096",
 			Time:    99,
 			Unit:    "year",
 			Dir:     sslDir,

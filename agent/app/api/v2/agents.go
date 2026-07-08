@@ -28,6 +28,90 @@ func (b *BaseApi) CreateAgent(c *gin.Context) {
 }
 
 // @Tags AI
+// @Summary Batch install Agent
+// @Accept json
+// @Param request body dto.AgentBatchInstallReq true "request"
+// @Success 200 {object} dto.AgentItem
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /ai/agents/batch/install [post]
+func (b *BaseApi) BatchInstallAgent(c *gin.Context) {
+	var req dto.AgentBatchInstallReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	res, err := agentService.BatchInstall(req)
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
+// @Tags AI
+// @Summary Batch upgrade Agent
+// @Accept json
+// @Param request body dto.AgentBatchUpgradeReq true "request"
+// @Success 200 {array} dto.AgentBatchUpgradeResult
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /ai/agents/batch/upgrade [post]
+func (b *BaseApi) BatchUpgradeAgent(c *gin.Context) {
+	var req dto.AgentBatchUpgradeReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	res, err := agentService.BatchUpgrade(req)
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
+// @Tags AI
+// @Summary Batch install Agent Skill
+// @Accept json
+// @Param request body dto.AgentBatchSkillInstallReq true "request"
+// @Success 200 {array} dto.AgentBatchSkillInstallResult
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /ai/agents/batch/skill/install [post]
+func (b *BaseApi) BatchInstallAgentSkill(c *gin.Context) {
+	var req dto.AgentBatchSkillInstallReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	res, err := agentService.BatchInstallSkill(req)
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
+// @Tags AI
+// @Summary Batch operate Agent
+// @Accept json
+// @Param request body dto.AgentBatchOperateReq true "request"
+// @Success 200 {array} dto.AgentBatchOperateResult
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /ai/agents/batch/operate [post]
+func (b *BaseApi) BatchOperateAgent(c *gin.Context) {
+	var req dto.AgentBatchOperateReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	res, err := agentService.BatchOperate(req)
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	helper.SuccessWithData(c, res)
+}
+
+// @Tags AI
 // @Summary Page Agents
 // @Accept json
 // @Param request body dto.SearchWithPage true "request"
@@ -296,11 +380,11 @@ func (b *BaseApi) DeleteHermesChatSession(c *gin.Context) {
 }
 
 // @Tags AI
-// @Summary Get Providers
+// @Summary Get model account providers
 // @Success 200 {array} dto.ProviderInfo
 // @Security ApiKeyAuth
 // @Security Timestamp
-// @Router /ai/agents/providers [get]
+// @Router /ai/accounts/providers [get]
 func (b *BaseApi) GetAgentProviders(c *gin.Context) {
 	list, err := agentService.GetProviders()
 	if err != nil {
@@ -311,13 +395,13 @@ func (b *BaseApi) GetAgentProviders(c *gin.Context) {
 }
 
 // @Tags AI
-// @Summary Create Agent account
+// @Summary Create model account
 // @Accept json
 // @Param request body dto.AgentAccountCreateReq true "request"
 // @Success 200
 // @Security ApiKeyAuth
 // @Security Timestamp
-// @Router /ai/agents/accounts [post]
+// @Router /ai/accounts [post]
 func (b *BaseApi) CreateAgentAccount(c *gin.Context) {
 	var req dto.AgentAccountCreateReq
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
@@ -331,13 +415,13 @@ func (b *BaseApi) CreateAgentAccount(c *gin.Context) {
 }
 
 // @Tags AI
-// @Summary Update Agent account
+// @Summary Update model account
 // @Accept json
 // @Param request body dto.AgentAccountUpdateReq true "request"
 // @Success 200
 // @Security ApiKeyAuth
 // @Security Timestamp
-// @Router /ai/agents/accounts/update [post]
+// @Router /ai/accounts/update [post]
 func (b *BaseApi) UpdateAgentAccount(c *gin.Context) {
 	var req dto.AgentAccountUpdateReq
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
@@ -351,13 +435,13 @@ func (b *BaseApi) UpdateAgentAccount(c *gin.Context) {
 }
 
 // @Tags AI
-// @Summary Page Agent accounts
+// @Summary Page model accounts
 // @Accept json
 // @Param request body dto.AgentAccountSearch true "request"
 // @Success 200 {object} dto.PageResult
 // @Security ApiKeyAuth
 // @Security Timestamp
-// @Router /ai/agents/accounts/search [post]
+// @Router /ai/accounts/search [post]
 func (b *BaseApi) PageAgentAccounts(c *gin.Context) {
 	var req dto.AgentAccountSearch
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
@@ -375,13 +459,34 @@ func (b *BaseApi) PageAgentAccounts(c *gin.Context) {
 }
 
 // @Tags AI
-// @Summary List Agent account models
+// @Summary Count model accounts by provider
+// @Accept json
+// @Param request body dto.AgentAccountProviderCountReq true "request"
+// @Success 200 {object} map[string]int64
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /ai/accounts/counts [post]
+func (b *BaseApi) CountAgentAccountsByProviders(c *gin.Context) {
+	var req dto.AgentAccountProviderCountReq
+	if err := helper.CheckBindAndValidate(&req, c); err != nil {
+		return
+	}
+	counts, err := agentService.CountAccountsByProviders(req)
+	if err != nil {
+		helper.BadRequest(c, err)
+		return
+	}
+	helper.SuccessWithData(c, counts)
+}
+
+// @Tags AI
+// @Summary List model account models
 // @Accept json
 // @Param request body dto.AgentAccountModelReq true "request"
 // @Success 200 {array} dto.AgentAccountModel
 // @Security ApiKeyAuth
 // @Security Timestamp
-// @Router /ai/agents/accounts/models [post]
+// @Router /ai/accounts/models [post]
 func (b *BaseApi) GetAgentAccountModels(c *gin.Context) {
 	var req dto.AgentAccountModelReq
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
@@ -396,13 +501,13 @@ func (b *BaseApi) GetAgentAccountModels(c *gin.Context) {
 }
 
 // @Tags AI
-// @Summary Create Agent account model
+// @Summary Create model account model
 // @Accept json
 // @Param request body dto.AgentAccountModelCreateReq true "request"
 // @Success 200
 // @Security ApiKeyAuth
 // @Security Timestamp
-// @Router /ai/agents/accounts/models/create [post]
+// @Router /ai/accounts/models/create [post]
 func (b *BaseApi) CreateAgentAccountModel(c *gin.Context) {
 	var req dto.AgentAccountModelCreateReq
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
@@ -416,13 +521,13 @@ func (b *BaseApi) CreateAgentAccountModel(c *gin.Context) {
 }
 
 // @Tags AI
-// @Summary Update Agent account model
+// @Summary Update model account model
 // @Accept json
 // @Param request body dto.AgentAccountModelUpdateReq true "request"
 // @Success 200
 // @Security ApiKeyAuth
 // @Security Timestamp
-// @Router /ai/agents/accounts/models/update [post]
+// @Router /ai/accounts/models/update [post]
 func (b *BaseApi) UpdateAgentAccountModel(c *gin.Context) {
 	var req dto.AgentAccountModelUpdateReq
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
@@ -436,13 +541,13 @@ func (b *BaseApi) UpdateAgentAccountModel(c *gin.Context) {
 }
 
 // @Tags AI
-// @Summary Delete Agent account model
+// @Summary Delete model account model
 // @Accept json
 // @Param request body dto.AgentAccountModelDeleteReq true "request"
 // @Success 200
 // @Security ApiKeyAuth
 // @Security Timestamp
-// @Router /ai/agents/accounts/models/delete [post]
+// @Router /ai/accounts/models/delete [post]
 func (b *BaseApi) DeleteAgentAccountModel(c *gin.Context) {
 	var req dto.AgentAccountModelDeleteReq
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
@@ -456,13 +561,13 @@ func (b *BaseApi) DeleteAgentAccountModel(c *gin.Context) {
 }
 
 // @Tags AI
-// @Summary Verify Agent account
+// @Summary Verify model account
 // @Accept json
 // @Param request body dto.AgentAccountVerifyReq true "request"
 // @Success 200
 // @Security ApiKeyAuth
 // @Security Timestamp
-// @Router /ai/agents/accounts/verify [post]
+// @Router /ai/accounts/verify [post]
 func (b *BaseApi) VerifyAgentAccount(c *gin.Context) {
 	var req dto.AgentAccountVerifyReq
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
@@ -476,13 +581,13 @@ func (b *BaseApi) VerifyAgentAccount(c *gin.Context) {
 }
 
 // @Tags AI
-// @Summary Delete Agent account
+// @Summary Delete model account
 // @Accept json
 // @Param request body dto.AgentAccountDeleteReq true "request"
 // @Success 200
 // @Security ApiKeyAuth
 // @Security Timestamp
-// @Router /ai/agents/accounts/delete [post]
+// @Router /ai/accounts/delete [post]
 func (b *BaseApi) DeleteAgentAccount(c *gin.Context) {
 	var req dto.AgentAccountDeleteReq
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {

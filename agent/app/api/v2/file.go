@@ -192,7 +192,7 @@ func (b *BaseApi) BatchDeleteFile(c *gin.Context) {
 // @Security ApiKeyAuth
 // @Security Timestamp
 // @Router /files/mode [post]
-// @x-panel-log {"bodyKeys":["path","mode"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"修改权限 [paths] => [mode]","formatEN":"Change mode [paths] => [mode]"}
+// @x-panel-log {"bodyKeys":["path","mode"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"修改权限 [path] => [mode]","formatEN":"Change mode [path] => [mode]"}
 func (b *BaseApi) ChangeFileMode(c *gin.Context) {
 	var req request.FileCreate
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
@@ -214,7 +214,7 @@ func (b *BaseApi) ChangeFileMode(c *gin.Context) {
 // @Security ApiKeyAuth
 // @Security Timestamp
 // @Router /files/owner [post]
-// @x-panel-log {"bodyKeys":["path","user","group"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"修改用户/组 [paths] => [user]/[group]","formatEN":"Change owner [paths] => [user]/[group]"}
+// @x-panel-log {"bodyKeys":["path","user","group"],"paramKeys":[],"BeforeFunctions":[],"formatZH":"修改用户/组 [path] => [user]/[group]","formatEN":"Change owner [path] => [user]/[group]"}
 func (b *BaseApi) ChangeFileOwner(c *gin.Context) {
 	var req request.FileRoleUpdate
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
@@ -638,6 +638,10 @@ func (b *BaseApi) MoveFile(c *gin.Context) {
 // @Router /files/download [get]
 func (b *BaseApi) Download(c *gin.Context) {
 	filePath := c.Query("path")
+	if files.ShouldDenySensitiveFileRead(filePath) {
+		helper.InternalServer(c, buserr.New("ErrSensitiveFileRead"))
+		return
+	}
 	file, err := os.Open(filePath)
 	if err != nil {
 		helper.InternalServer(c, err)
@@ -671,6 +675,10 @@ func (b *BaseApi) DownloadChunkFiles(c *gin.Context) {
 	fileOp := files.NewFileOp()
 	if !fileOp.Stat(req.Path) {
 		helper.ErrorWithDetail(c, http.StatusInternalServerError, "ErrPathNotFound", nil)
+		return
+	}
+	if files.ShouldDenySensitiveFileRead(req.Path) {
+		helper.InternalServer(c, buserr.New("ErrSensitiveFileRead"))
 		return
 	}
 	filePath := req.Path
@@ -924,7 +932,17 @@ var wsUpgrade = websocket.Upgrader{
 	},
 }
 
+// @Tags File
+// @Summary Wget process
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/wget/process [get]
 func (b *BaseApi) WgetProcess(c *gin.Context) {
+	if !websocket.IsWebSocketUpgrade(c.Request) {
+		helper.Success(c)
+		return
+	}
 	ws, err := wsUpgrade.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		return
@@ -934,6 +952,12 @@ func (b *BaseApi) WgetProcess(c *gin.Context) {
 	go wsClient.Write()
 }
 
+// @Tags File
+// @Summary Process keys
+// @Success 200
+// @Security ApiKeyAuth
+// @Security Timestamp
+// @Router /files/wget/process/keys [get]
 func (b *BaseApi) ProcessKeys(c *gin.Context) {
 	res := &response.FileProcessKeys{}
 	keys := global.CACHE.PrefixScanKey("file-wget-")
@@ -953,15 +977,19 @@ func (b *BaseApi) ProcessKeys(c *gin.Context) {
 
 // @Tags File
 // @Summary Read file by Line
+// @Param type path string true "type"
 // @Param request body request.FileReadByLineReq true "request"
 // @Success 200 {object} response.FileLineContent
 // @Security ApiKeyAuth
 // @Security Timestamp
-// @Router /files/read [post]
+// @Router /files/read/{type} [post]
 func (b *BaseApi) ReadFileByLine(c *gin.Context) {
 	var req request.FileReadByLineReq
 	if err := helper.CheckBindAndValidate(&req, c); err != nil {
 		return
+	}
+	if readType := strings.TrimSpace(c.Param("type")); readType != "" {
+		req.Type = readType
 	}
 	res, err := fileService.ReadLogByLine(req)
 	if err != nil {
@@ -993,16 +1021,6 @@ func (b *BaseApi) BatchChangeModeAndOwner(c *gin.Context) {
 		helper.InternalServer(c, err)
 	}
 	helper.Success(c)
-}
-
-func (b *BaseApi) GetPathByType(c *gin.Context) {
-	pathType, ok := c.Params.Get("type")
-	if !ok {
-		helper.BadRequest(c, errors.New("error pathType id in path"))
-		return
-	}
-	resPath := fileService.GetPathByType(pathType)
-	helper.SuccessWithData(c, resPath)
 }
 
 // @Tags File
@@ -1334,6 +1352,10 @@ func (b *BaseApi) DownloadFileShare(c *gin.Context) {
 			return
 		}
 		helper.InternalServer(c, err)
+		return
+	}
+	if files.ShouldDenySensitiveFileRead(filePath) {
+		helper.InternalServer(c, buserr.New("ErrSensitiveFileRead"))
 		return
 	}
 	file, err := os.Open(filePath)

@@ -2,6 +2,7 @@ package hook
 
 import (
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/1Panel-dev/1Panel/agent/app/dto"
@@ -11,23 +12,42 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/constant"
 	"github.com/1Panel-dev/1Panel/agent/global"
 	"github.com/1Panel-dev/1Panel/agent/utils/alert_push"
-	"github.com/1Panel-dev/1Panel/agent/utils/cmd"
 	"github.com/1Panel-dev/1Panel/agent/utils/xpack"
 )
 
 func Init() {
+	global.LOG.Info("agent hook: init global data start")
 	initGlobalData()
+	global.LOG.Info("agent hook: init global data done")
+	global.LOG.Info("agent hook: handle cronjob status start")
 	handleCronjobStatus()
+	global.LOG.Info("agent hook: handle cronjob status done")
+	global.LOG.Info("agent hook: handle clam status start")
 	handleClamStatus()
+	global.LOG.Info("agent hook: handle clam status done")
+	global.LOG.Info("agent hook: handle record status start")
 	handleRecordStatus()
+	global.LOG.Info("agent hook: handle record status done")
+	global.LOG.Info("agent hook: handle snapshot status start")
 	handleSnapStatus()
+	global.LOG.Info("agent hook: handle snapshot status done")
+	global.LOG.Info("agent hook: handle ollama model status start")
 	handleOllamaModelStatus()
+	global.LOG.Info("agent hook: handle ollama model status done")
 
+	global.LOG.Info("agent hook: load local dir start")
 	loadLocalDir()
+	global.LOG.Info("agent hook: load local dir done")
 
+	global.LOG.Info("agent hook: init docker config start")
 	initDockerConf()
+	global.LOG.Info("agent hook: init docker config done")
+	global.LOG.Info("agent hook: init alert task start")
 	initAlertTask()
+	global.LOG.Info("agent hook: init alert task done")
+	global.LOG.Info("agent hook: init monitor db start")
 	initMonitorDB()
+	global.LOG.Info("agent hook: init monitor db done")
 }
 
 func initGlobalData() {
@@ -38,7 +58,7 @@ func initGlobalData() {
 	if err := settingRepo.Update("SystemStatus", "Free"); err != nil {
 		global.LOG.Fatalf("init service before start failed, err: %v", err)
 	}
-	node, _ := xpack.LoadNodeInfo(false)
+	node, _ := xpack.MultiNodeProvider.LoadNodeInfo(false)
 	if len(node.Version) != 0 {
 		_ = settingRepo.Update("SystemVersion", node.Version)
 	}
@@ -140,11 +160,10 @@ func loadLocalDir() {
 }
 
 func initDockerConf() {
-	stdout, err := cmd.RunDefaultWithStdoutBashC("which docker")
+	dockerPath, err := exec.LookPath("docker")
 	if err != nil {
 		return
 	}
-	dockerPath := stdout
 	if strings.Contains(dockerPath, "snap") {
 		constant.DaemonJsonPath = "/var/snap/docker/current/config/daemon.json"
 	}

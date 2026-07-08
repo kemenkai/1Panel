@@ -27,6 +27,84 @@ type AgentCreateReq struct {
 	DockerCompose  string   `json:"dockerCompose"`
 }
 
+type AgentBatchInstallReq struct {
+	Name               string              `json:"name"`
+	Remark             string              `json:"remark"`
+	AppVersion         string              `json:"appVersion" validate:"required"`
+	WebUIPort          int                 `json:"webUIPort" validate:"required,min=1,max=65535"`
+	BridgePort         int                 `json:"bridgePort"`
+	AllowedOrigins     []string            `json:"allowedOrigins"`
+	AgentType          string              `json:"agentType" validate:"required,oneof=openclaw copaw hermes-agent"`
+	Model              string              `json:"model"`
+	AccountID          uint                `json:"accountId"`
+	Token              string              `json:"token"`
+	TaskID             string              `json:"taskID"`
+	Advanced           bool                `json:"advanced"`
+	ContainerName      string              `json:"containerName"`
+	AllowPort          bool                `json:"allowPort"`
+	SpecifyIP          string              `json:"specifyIP"`
+	RestartPolicy      string              `json:"restartPolicy"`
+	CpuQuota           float64             `json:"cpuQuota"`
+	MemoryLimit        float64             `json:"memoryLimit"`
+	MemoryUnit         string              `json:"memoryUnit"`
+	PullImage          bool                `json:"pullImage"`
+	EditCompose        bool                `json:"editCompose"`
+	DockerCompose      string              `json:"dockerCompose"`
+	MasterAccountID    uint                `json:"masterAccountId"`
+	FallbackAccessHost string              `json:"fallbackAccessHost"`
+	AccountSnapshot    AgentAccountInfo    `json:"accountSnapshot"`
+	AccountModels      []AgentAccountModel `json:"accountModels"`
+}
+
+type AgentBatchUpgradeReq struct {
+	AgentType     string `json:"agentType" validate:"required,oneof=openclaw copaw hermes-agent"`
+	TargetVersion string `json:"targetVersion" validate:"required"`
+	Backup        bool   `json:"backup"`
+	PullImage     bool   `json:"pullImage"`
+	TaskID        string `json:"taskID"`
+}
+
+type AgentBatchUpgradeResult struct {
+	AgentID      uint   `json:"agentID"`
+	AgentName    string `json:"agentName"`
+	AppInstallID uint   `json:"appInstallID"`
+	Success      bool   `json:"success"`
+	Skipped      bool   `json:"skipped"`
+	Message      string `json:"message"`
+}
+
+type AgentBatchSkillInstallReq struct {
+	AgentType   string `json:"agentType" validate:"required,oneof=openclaw hermes-agent"`
+	SkillName   string `json:"skillName" validate:"required"`
+	PackagePath string `json:"packagePath" validate:"required"`
+	TaskID      string `json:"taskID"`
+}
+
+type AgentBatchSkillInstallResult struct {
+	AgentID      uint   `json:"agentID"`
+	AgentName    string `json:"agentName"`
+	AppInstallID uint   `json:"appInstallID"`
+	Success      bool   `json:"success"`
+	Skipped      bool   `json:"skipped"`
+	Message      string `json:"message"`
+}
+
+type AgentBatchOperateReq struct {
+	AgentType   string `json:"agentType" validate:"required,oneof=openclaw copaw hermes-agent"`
+	Operate     string `json:"operate" validate:"required,oneof=start stop restart delete"`
+	ForceDelete bool   `json:"forceDelete"`
+	TaskID      string `json:"taskID"`
+}
+
+type AgentBatchOperateResult struct {
+	AgentID      uint   `json:"agentID"`
+	AgentName    string `json:"agentName"`
+	AppInstallID uint   `json:"appInstallID"`
+	Success      bool   `json:"success"`
+	Skipped      bool   `json:"skipped"`
+	Message      string `json:"message"`
+}
+
 type AgentItem struct {
 	ID                   uint      `json:"id"`
 	Name                 string    `json:"name"`
@@ -274,19 +352,24 @@ type AgentAccountSearch struct {
 	Name     string `json:"name"`
 }
 
+type AgentAccountProviderCountReq struct {
+	Providers []string `json:"providers"`
+}
+
 type AgentAccountInfo struct {
-	ID             uint                `json:"id"`
-	Provider       string              `json:"provider"`
-	ProviderName   string              `json:"providerName"`
-	Name           string              `json:"name"`
-	APIKey         string              `json:"apiKey"`
-	RememberAPIKey bool                `json:"rememberApiKey"`
-	BaseURL        string              `json:"baseUrl"`
-	Models         []AgentAccountModel `json:"models"`
-	APIType        string              `json:"apiType"`
-	Verified       bool                `json:"verified"`
-	Remark         string              `json:"remark"`
-	CreatedAt      time.Time           `json:"createdAt"`
+	ID              uint                `json:"id"`
+	MasterAccountID uint                `json:"masterAccountId"`
+	Provider        string              `json:"provider"`
+	ProviderName    string              `json:"providerName"`
+	Name            string              `json:"name"`
+	APIKey          string              `json:"apiKey"`
+	RememberAPIKey  bool                `json:"rememberApiKey"`
+	BaseURL         string              `json:"baseUrl"`
+	Models          []AgentAccountModel `json:"models"`
+	APIType         string              `json:"apiType"`
+	Verified        bool                `json:"verified"`
+	Remark          string              `json:"remark"`
+	CreatedAt       time.Time           `json:"createdAt"`
 }
 
 type ProviderModelInfo struct {
@@ -604,7 +687,7 @@ type AgentConfigFile struct {
 
 type AgentSkillSearchReq struct {
 	AgentID uint   `json:"agentId" validate:"required"`
-	Source  string `json:"source" validate:"required,oneof=clawhub-global clawhub-cn skillhub official skills-sh"`
+	Source  string `json:"source" validate:"required,oneof=clawhub-global clawhub-cn skillhub official skills-sh local-hub"`
 	Keyword string `json:"keyword" validate:"required"`
 }
 
@@ -641,7 +724,7 @@ type AgentSkillUpdateReq struct {
 
 type AgentSkillInstallReq struct {
 	AgentID uint   `json:"agentId" validate:"required"`
-	Source  string `json:"source" validate:"required,oneof=clawhub-global clawhub-cn skillhub official skills-sh"`
+	Source  string `json:"source" validate:"required,oneof=clawhub-global clawhub-cn skillhub official skills-sh local-hub"`
 	Slug    string `json:"slug" validate:"required"`
 	TaskID  string `json:"taskID" validate:"required"`
 }

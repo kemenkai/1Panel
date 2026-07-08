@@ -7,8 +7,9 @@ import (
 	"time"
 
 	"github.com/1Panel-dev/1Panel/core/server"
+	"github.com/1Panel-dev/1Panel/core/utils/common"
+	"github.com/1Panel-dev/1Panel/core/utils/ctl_conf"
 	"github.com/1Panel-dev/1Panel/core/utils/platform"
-	"github.com/glebarez/sqlite"
 	"github.com/spf13/cobra"
 	"gorm.io/gorm"
 )
@@ -42,11 +43,22 @@ func loadDBConn(dbName string) (*gorm.DB, error) {
 		baseDir = platform.InstallDir()
 	}
 
-	db, err := gorm.Open(sqlite.Open(path.Join(baseDir, "1panel/db", dbName)), &gorm.Config{})
+	db, err := common.GetDBWithPath(path.Join(baseDir, "1panel/db", dbName))
 	if err != nil {
-		return nil, fmt.Errorf("init my db conn failed, err: %v \n", err)
+		return nil, fmt.Errorf("init my db conn failed, err: %v", err)
 	}
 	return db, nil
+}
+
+func loadBaseDir() (string, error) {
+	baseDir, err := ctl_conf.LoadFromFile("/usr/local/bin/1pctl", "BASE_DIR")
+	if err != nil {
+		return "", fmt.Errorf("handle load `BASE_DIR` failed, err: %v", err)
+	}
+	if len(baseDir) == 0 {
+		return "", fmt.Errorf("error `BASE_DIR` find in /usr/local/bin/1pctl")
+	}
+	return baseDir, nil
 }
 
 func getSettingByKey(db *gorm.DB, key string) string {
@@ -57,7 +69,7 @@ func getSettingByKey(db *gorm.DB, key string) string {
 
 type LoginLog struct{}
 
-func isDefault(db *gorm.DB) bool {
+func shouldShowInitialPassword(db *gorm.DB) bool {
 	logCount := int64(0)
 	_ = db.Model(&LoginLog{}).Where("status = ?", "Success").Count(&logCount).Error
 	return logCount == 0

@@ -17,7 +17,7 @@ const key = computed(() => {
     return Math.random();
 });
 const include = computed(() => {
-    return props.keepAlive || cacheRouter;
+    return (props.keepAlive || cacheRouter) as string[];
 });
 const isEnhanceRoute = (path: string) => path.startsWith('/enhance');
 const props = defineProps({

@@ -75,7 +75,6 @@ type IFileService interface {
 	BatchChangeModeAndOwner(op request.FileRoleReq) error
 	ReadLogByLine(req request.FileReadByLineReq) (*response.FileLineContent, error)
 
-	GetPathByType(pathType string) string
 	BatchCheckFiles(req request.FilePathsCheck) []response.ExistFileInfo
 	GetHostMount() []dto.DiskInfo
 	GetUsersAndGroups() (*response.UserGroupResponse, error)
@@ -672,6 +671,9 @@ func applyDecompressOwnership(srcPath, dstPath string) error {
 }
 
 func (f *FileService) GetContent(op request.FileContentReq) (response.FileInfo, error) {
+	if files.ShouldDenySensitiveFileRead(op.Path) {
+		return response.FileInfo{}, buserr.New("ErrSensitiveFileRead")
+	}
 	info, err := files.NewFileInfo(files.FileOption{
 		Path:     op.Path,
 		Expand:   true,
@@ -708,6 +710,9 @@ func (f *FileService) GetContent(op request.FileContentReq) (response.FileInfo, 
 }
 
 func (f *FileService) GetPreviewContent(op request.FileContentReq) (response.FileInfo, error) {
+	if files.ShouldDenySensitiveFileRead(op.Path) {
+		return response.FileInfo{}, buserr.New("ErrSensitiveFileRead")
+	}
 	info, err := files.NewFileInfo(files.FileOption{
 		Path:     op.Path,
 		Expand:   false,
@@ -717,6 +722,9 @@ func (f *FileService) GetPreviewContent(op request.FileContentReq) (response.Fil
 		return response.FileInfo{}, err
 	}
 
+	if files.IsBinaryPreviewFile(info.MimeType, info.Extension) {
+		return response.FileInfo{}, buserr.New("ErrFileCanNotRead")
+	}
 	if files.IsBlockDevice(info.FileMode) {
 		return response.FileInfo{FileInfo: *info}, nil
 	}
@@ -827,7 +835,23 @@ func (f *FileService) ChangeName(req request.FileRename) error {
 func (f *FileService) Wget(w request.FileWget) (string, error) {
 	fo := files.NewFileOp()
 	key := "file-wget-" + common.GetUuid()
-	return key, fo.DownloadFileWithProcess(w.Url, filepath.Join(w.Path, w.Name), key, w.IgnoreCertificate)
+	options := files.DownloadOptions{
+		IgnoreCertificate: w.IgnoreCertificate,
+	}
+	if w.UseProxy {
+		systemProxy, err := NewISettingService().GetSystemProxy()
+		if err != nil {
+			return "", err
+		}
+		options.Proxy = &files.DownloadProxyConfig{
+			Type:     systemProxy.Type,
+			URL:      systemProxy.URL,
+			Port:     systemProxy.Port,
+			User:     systemProxy.User,
+			Password: systemProxy.Password,
+		}
+	}
+	return key, fo.DownloadFileWithProcess(w.Url, filepath.Join(w.Path, w.Name), key, options)
 }
 
 func (f *FileService) MvFile(m request.FileMove) error {
@@ -913,6 +937,9 @@ func readEditableFileHistoryContent(filePath string) ([]byte, os.FileMode, bool)
 	if mode.IsDir() || mode&os.ModeSymlink != 0 || !mode.IsRegular() || files.IsBlockDevice(mode) || info.Size() > fileHistorySnapshotMaxSize {
 		return nil, mode, false
 	}
+	if files.IsBinaryPreviewFile(files.GetMimeType(filePath), filepath.Ext(info.Name())) {
+		return nil, mode, false
+	}
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, mode, false
@@ -948,6 +975,11 @@ func buildHistoryMoveTargetPath(dst, name, sourcePath string, sourceCount int) s
 }
 
 func (f *FileService) FileDownload(d request.FileDownload) (string, error) {
+	for _, p := range d.Paths {
+		if files.ShouldDenySensitiveFileRead(p) {
+			return "", buserr.New("ErrSensitiveFileRead")
+		}
+	}
 	filePath := d.Paths[0]
 	if d.Compress {
 		tempPath := filepath.Join(os.TempDir(), fmt.Sprintf("%d", time.Now().UnixNano()))
@@ -1089,6 +1121,14 @@ func (f *FileService) ReadLogByLine(req request.FileReadByLineReq) (*response.Fi
 		if !exists {
 			return nil, buserr.New("ErrHttpReqNotFound")
 		}
+	case "ai-proxy":
+		safeName := path.Base(req.Name)
+		if safeName != req.Name || strings.Contains(safeName, "..") {
+			return nil, buserr.New("ErrInvalidParams")
+		}
+		logFilePath = path.Join(global.Dir.LogDir, "ai", safeName)
+	default:
+		return nil, buserr.New("ErrNotSupportType")
 	}
 
 	file, err := os.Open(logFilePath)
@@ -1132,17 +1172,6 @@ func (f *FileService) ReadLogByLine(req request.FileReadByLineReq) (*response.Fi
 		res.End = logFileRes.IsEndOfFile
 	}
 	return res, nil
-}
-
-func (f *FileService) GetPathByType(pathType string) string {
-	if pathType == "websiteDir" {
-		value, _ := settingRepo.GetValueByKey("WEBSITE_DIR")
-		if value == "" {
-			return path.Join(global.Dir.BaseDir, "1panel", "www")
-		}
-		return value
-	}
-	return ""
 }
 
 func (f *FileService) BatchCheckFiles(req request.FilePathsCheck) []response.ExistFileInfo {

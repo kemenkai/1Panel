@@ -1,11 +1,15 @@
 package repo
 
 import (
+	"encoding/json"
+	"strings"
+
 	"github.com/1Panel-dev/1Panel/agent/app/model"
 	"github.com/1Panel-dev/1Panel/agent/constant"
 	"github.com/1Panel-dev/1Panel/agent/global"
 	"google.golang.org/genproto/googleapis/type/date"
 	"gorm.io/gorm"
+	"strconv"
 	"time"
 )
 
@@ -20,7 +24,8 @@ type IAlertRepo interface {
 	WithByCreateAt(date *date.Date) DBOption
 	WithByLicenseId(licenseId string) DBOption
 	WithByRecordId(recordId uint) DBOption
-	WithByMethod(method string) DBOption
+	WithByAlertMethodContainsConfigID(id uint) DBOption
+	WithByMethodConfigIDs(ids []uint) DBOption
 
 	Create(alert *model.Alert) error
 	Get(opts ...DBOption) (model.Alert, error)
@@ -47,10 +52,14 @@ type IAlertRepo interface {
 	GetLicensePushCount(method string) (uint, error)
 
 	GetConfig(opts ...DBOption) (model.AlertConfig, error)
+	GetConfigById(id uint) (model.AlertConfig, error)
 	AlertConfigList(opts ...DBOption) ([]model.AlertConfig, error)
 	UpdateAlertConfig(maps map[string]interface{}, opts ...DBOption) error
 	CreateAlertConfig(config *model.AlertConfig) error
 	DeleteAlertConfig(opts ...DBOption) error
+
+	WithByTypeNotIn(types []string) DBOption
+	PageAlertConfig(page, size int, opts ...DBOption) (int64, []model.AlertConfig, error)
 
 	SyncAll(data []model.AlertConfig) error
 }
@@ -101,9 +110,20 @@ func (a *AlertRepo) WithByRecordId(recordId uint) DBOption {
 	}
 }
 
-func (a *AlertRepo) WithByMethod(method string) DBOption {
+func (a *AlertRepo) WithByAlertMethodContainsConfigID(id uint) DBOption {
+	method := strconv.Itoa(int(id))
 	return func(g *gorm.DB) *gorm.DB {
-		return g.Where("method = ?", method)
+		return g.Where("(method = ? OR method LIKE ? OR method LIKE ? OR method LIKE ?)", method, method+",%", "%,"+method, "%,"+method+",%")
+	}
+}
+
+func (a *AlertRepo) WithByMethodConfigIDs(ids []uint) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		methods := make([]string, 0, len(ids))
+		for _, id := range ids {
+			methods = append(methods, strconv.Itoa(int(id)))
+		}
+		return g.Where("method IN ?", methods)
 	}
 }
 
@@ -306,32 +326,233 @@ func (a *AlertRepo) GetConfig(opts ...DBOption) (model.AlertConfig, error) {
 	return alertConfig, err
 }
 
+func (a *AlertRepo) GetConfigById(id uint) (model.AlertConfig, error) {
+	var config model.AlertConfig
+	err := global.AlertDB.First(&config, id).Error
+	return config, err
+}
+
+func (a *AlertRepo) WithByTypeNotIn(types []string) DBOption {
+	return func(g *gorm.DB) *gorm.DB {
+		return g.Where("`type` NOT IN (?)", types)
+	}
+}
+
+func (a *AlertRepo) PageAlertConfig(page, size int, opts ...DBOption) (int64, []model.AlertConfig, error) {
+	var configs []model.AlertConfig
+	db := global.AlertDB.Model(&model.AlertConfig{})
+	for _, opt := range opts {
+		db = opt(db)
+	}
+	count := int64(0)
+	db = db.Count(&count)
+	err := db.Limit(size).Offset(size * (page - 1)).Find(&configs).Error
+	return count, configs, err
+}
+
+var singletonTypes = map[string]bool{
+	constant.CommonConfig: true,
+}
+
 func (a *AlertRepo) SyncAll(data []model.AlertConfig) error {
 	tx := global.AlertDB.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+			panic(r)
+		}
+	}()
+
 	var oldConfigs []model.AlertConfig
-	_ = tx.Find(&oldConfigs).Error
+	if err := tx.Find(&oldConfigs).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	usedConfigIDs, err := loadUsedAlertConfigIDs(tx)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
 	oldConfigMap := make(map[string]uint)
+	oldConfigByType := make(map[string][]model.AlertConfig)
+	oldConfigByKey := make(map[string][]model.AlertConfig)
+	consumedConfigIDs := make(map[uint]struct{})
 	for _, item := range oldConfigs {
-		oldConfigMap[item.Type] = item.ID
+		if singletonTypes[item.Type] {
+			oldConfigMap[item.Type] = item.ID
+			continue
+		}
+		oldConfigByType[item.Type] = append(oldConfigByType[item.Type], item)
+		oldConfigByKey[alertConfigSyncKey(item)] = append(oldConfigByKey[alertConfigSyncKey(item)], item)
 	}
 	for _, item := range data {
-		if val, ok := oldConfigMap[item.Type]; ok {
-			item.ID = val
-			delete(oldConfigMap, item.Type)
-		} else {
-			item.ID = 0
+		if singletonTypes[item.Type] {
+			if val, ok := oldConfigMap[item.Type]; ok {
+				item.ID = val
+				delete(oldConfigMap, item.Type)
+				consumedConfigIDs[item.ID] = struct{}{}
+			} else {
+				item.ID = 0
+			}
+			if item.ID == 0 {
+				if err := tx.Create(&item).Error; err != nil {
+					tx.Rollback()
+					return err
+				}
+			} else if err := tx.Save(&item).Error; err != nil {
+				tx.Rollback()
+				return err
+			}
+			continue
 		}
-		if err := tx.Model(model.AlertConfig{}).Where("id = ?", item.ID).Save(&item).Error; err != nil {
+
+		key := alertConfigSyncKey(item)
+		if matched, ok := popAlertConfigByKey(oldConfigByKey, key); ok {
+			item.ID = matched.ID
+			consumedConfigIDs[item.ID] = struct{}{}
+			if err := tx.Save(&item).Error; err != nil {
+				tx.Rollback()
+				return err
+			}
+			deleteAlertConfigByID(oldConfigByType, matched.ID)
+			continue
+		}
+
+		if matched, ok := popUnusedAlertConfigByType(oldConfigByType, usedConfigIDs, item.Type); ok {
+			item.ID = matched.ID
+			consumedConfigIDs[item.ID] = struct{}{}
+			if err := tx.Save(&item).Error; err != nil {
+				tx.Rollback()
+				return err
+			}
+			continue
+		}
+
+		item.ID = 0
+		if err := tx.Create(&item).Error; err != nil {
 			tx.Rollback()
 			return err
 		}
 	}
-	for _, val := range oldConfigMap {
-		if err := tx.Where("id = ?", val).Delete(&model.AlertConfig{}).Error; err != nil {
+	for _, item := range oldConfigs {
+		if _, used := usedConfigIDs[item.ID]; used {
+			continue
+		}
+		if _, kept := consumedConfigIDs[item.ID]; kept {
+			continue
+		}
+		if err := tx.Where("id = ?", item.ID).Delete(&model.AlertConfig{}).Error; err != nil {
 			tx.Rollback()
 			return err
 		}
 	}
-	tx.Commit()
+	if err := tx.Commit().Error; err != nil {
+		tx.Rollback()
+		return err
+	}
 	return nil
+}
+
+func loadUsedAlertConfigIDs(tx *gorm.DB) (map[uint]struct{}, error) {
+	var alerts []model.Alert
+	if err := tx.Select("method").Find(&alerts).Error; err != nil {
+		return nil, err
+	}
+
+	usedIDs := make(map[uint]struct{})
+	for _, alert := range alerts {
+		for _, item := range strings.Split(alert.Method, ",") {
+			item = strings.TrimSpace(item)
+			if item == "" {
+				continue
+			}
+			id, err := strconv.ParseUint(item, 10, 64)
+			if err != nil {
+				continue
+			}
+			usedIDs[uint(id)] = struct{}{}
+		}
+	}
+	return usedIDs, nil
+}
+
+func alertConfigSyncKey(item model.AlertConfig) string {
+	return item.Type + "::" + normalizeAlertConfigJSON(item.Config)
+}
+
+func normalizeAlertConfigJSON(config string) string {
+	trimmed := strings.TrimSpace(config)
+	if trimmed == "" {
+		return ""
+	}
+
+	var data any
+	if err := json.Unmarshal([]byte(trimmed), &data); err != nil {
+		return trimmed
+	}
+	buf, err := json.Marshal(data)
+	if err != nil {
+		return trimmed
+	}
+	return string(buf)
+}
+
+func popAlertConfigByKey(configMap map[string][]model.AlertConfig, key string) (model.AlertConfig, bool) {
+	items := configMap[key]
+	if len(items) == 0 {
+		return model.AlertConfig{}, false
+	}
+
+	item := items[0]
+	if len(items) == 1 {
+		delete(configMap, key)
+	} else {
+		configMap[key] = items[1:]
+	}
+	return item, true
+}
+
+func popUnusedAlertConfigByType(configMap map[string][]model.AlertConfig, usedConfigIDs map[uint]struct{}, configType string) (model.AlertConfig, bool) {
+	items := configMap[configType]
+	if len(items) == 0 {
+		return model.AlertConfig{}, false
+	}
+
+	for idx, item := range items {
+		if _, used := usedConfigIDs[item.ID]; used {
+			continue
+		}
+		if idx == 0 {
+			if len(items) == 1 {
+				delete(configMap, configType)
+			} else {
+				configMap[configType] = items[1:]
+			}
+		} else {
+			configMap[configType] = append(items[:idx], items[idx+1:]...)
+		}
+		return item, true
+	}
+	return model.AlertConfig{}, false
+}
+
+func deleteAlertConfigByID(configMap map[string][]model.AlertConfig, id uint) {
+	for key, items := range configMap {
+		for idx, item := range items {
+			if item.ID != id {
+				continue
+			}
+			if len(items) == 1 {
+				delete(configMap, key)
+			} else {
+				configMap[key] = append(items[:idx], items[idx+1:]...)
+			}
+			return
+		}
+	}
 }

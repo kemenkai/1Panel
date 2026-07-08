@@ -27,11 +27,16 @@ export const opWebsite = (req: Website.WebSiteOp, node?: string) => {
 };
 
 export const opWebsiteLog = (req: Website.WebSiteOpLog) => {
-    return http.post<Website.WebSiteLog>(`/websites/log`, req);
+    return http.post<any>(`/websites/log/operate`, req);
 };
 
-export const updateWebsite = (req: Website.WebSiteUpdateReq) => {
-    return http.post<any>(`/websites/update`, req);
+export const getWebsiteLog = (req: Website.WebSiteLogReq) => {
+    return http.post<Website.WebSiteLog>(`/websites/log/search`, req);
+};
+
+export const updateWebsite = (req: Website.WebSiteUpdateReq, node?: string) => {
+    const query = node ? `?operateNode=${node}` : '';
+    return http.post<any>(`/websites/update${query}`, req);
 };
 
 export const getWebsite = (id: number) => {
@@ -106,8 +111,13 @@ export const updateAcmeAccount = (req: Website.AcmeAccountUpdate) => {
     return http.post<Website.AcmeAccount>(`/websites/acme/update`, req, TimeoutEnum.T_10M);
 };
 
-export const searchSSL = (req: ReqPage) => {
-    return http.post<ResPage<Website.SSLDTO>>(`/websites/ssl/search`, req);
+export const searchSSL = (req: ReqPage, currentNode?: string) => {
+    return http.post<ResPage<Website.SSLDTO>>(
+        `/websites/ssl/search`,
+        req,
+        TimeoutEnum.T_40S,
+        currentNode ? { CurrentNode: currentNode } : undefined,
+    );
 };
 
 export const listSSL = (req: Website.SSLReq) => {

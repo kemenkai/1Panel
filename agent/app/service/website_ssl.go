@@ -7,14 +7,15 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"os"
 	"path"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/go-acme/lego/v4/certificate"
-	legoLogger "github.com/go-acme/lego/v4/log"
+	"github.com/go-acme/lego/v5/certificate"
+	legoLogger "github.com/go-acme/lego/v5/log"
 	"github.com/jinzhu/gorm"
 
 	"github.com/1Panel-dev/1Panel/agent/app/dto/request"
@@ -199,8 +200,12 @@ func (w WebsiteSSLService) Create(create request.WebsiteSSLCreate) (request.Webs
 		return res, err
 	}
 	create.ID = websiteSSL.ID
-	logFile, _ := os.OpenFile(path.Join(global.Dir.SSLLogDir, fmt.Sprintf("%s-ssl-%d.log", websiteSSL.PrimaryDomain, websiteSSL.ID)), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, constant.FilePerm)
-	logFile.Close()
+	logFile, err := os.OpenFile(path.Join(global.Dir.SSLLogDir, fmt.Sprintf("%s-ssl-%d.log", websiteSSL.PrimaryDomain, websiteSSL.ID)), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, constant.FilePerm)
+	if err != nil {
+		global.LOG.Errorf("open ssl log file failed, domain: %s, err: %v", websiteSSL.PrimaryDomain, err)
+	} else {
+		logFile.Close()
+	}
 	go func() {
 		if create.Provider != constant.DnsManual {
 			if err = w.ObtainSSL(request.WebsiteSSLApply{
@@ -266,6 +271,53 @@ func reloadSystemSSL(websiteSSL *model.WebsiteSSL, logger *log.Logger) {
 		}
 		printSSLLog(logger, "UpdateSystemSSLSuccess", nil)
 	}
+}
+
+// SyncSystemSSL reconciles the panel certificate on disk with the WebsiteSSL
+// row referenced by the SSLID setting. When they differ (typically because a
+// previous renewal's reloadSystemSSL was skipped by a transient nginx reload
+// failure or because the panel was restarted between the DB save and the file
+// rewrite), the on-disk cert is refreshed and core is asked to reload its TLS
+// store. Safe to call on every renewal cron tick: it is a no-op when SSL is
+// not enabled, when SSLID does not resolve, or when the cert already matches.
+func SyncSystemSSL() {
+	if !global.IsMaster {
+		return
+	}
+	systemSSLEnable, sslID := GetSystemSSL()
+	if !systemSSLEnable {
+		return
+	}
+	websiteSSL, err := websiteSSLRepo.GetFirst(repo.WithByID(sslID))
+	if err != nil {
+		return
+	}
+	if strings.TrimSpace(websiteSSL.Pem) == "" || strings.TrimSpace(websiteSSL.PrivateKey) == "" {
+		return
+	}
+	certPath := path.Join(global.Dir.DataDir, "secret/server.crt")
+	keyPath := path.Join(global.Dir.DataDir, "secret/server.key")
+	diskCert, _ := os.ReadFile(certPath)
+	diskKey, _ := os.ReadFile(keyPath)
+	if strings.TrimSpace(string(diskCert)) == strings.TrimSpace(websiteSSL.Pem) &&
+		strings.TrimSpace(string(diskKey)) == strings.TrimSpace(websiteSSL.PrivateKey) {
+		return
+	}
+	global.LOG.Infof("panel SSL on disk diverged from DB (SSLID=%d, domain=%s), syncing", websiteSSL.ID, websiteSSL.PrimaryDomain)
+	fileOp := files.NewFileOp()
+	if err := fileOp.WriteFile(certPath, strings.NewReader(websiteSSL.Pem), 0600); err != nil {
+		global.LOG.Errorf("sync panel SSL: write cert failed: %s", err.Error())
+		return
+	}
+	if err := fileOp.WriteFile(keyPath, strings.NewReader(websiteSSL.PrivateKey), 0600); err != nil {
+		global.LOG.Errorf("sync panel SSL: write key failed: %s", err.Error())
+		return
+	}
+	if err := req_helper.PostLocalCore("/core/settings/ssl/reload"); err != nil {
+		global.LOG.Errorf("sync panel SSL: notify core failed: %s", err.Error())
+		return
+	}
+	global.LOG.Info("panel SSL synced from DB to disk")
 }
 
 func (w WebsiteSSLService) ObtainSSL(apply request.WebsiteSSLApply) error {
@@ -343,7 +395,10 @@ func (w WebsiteSSLService) obtainSSL(id uint, autoRenew bool) error {
 		if logFile != nil {
 			defer logFile.Close()
 		}
-		legoLogger.Logger = logger
+		// lego v5 switched to slog. Bridge it to the existing *log.Logger
+		// so the SSL apply log is still written to the per-domain file
+		// under SSLLogDir.
+		legoLogger.SetDefault(slog.New(slog.NewTextHandler(logger.Writer(), nil)))
 		startMsg := i18n.GetMsgWithMap("ApplySSLStart", map[string]interface{}{"domain": strings.Join(domains, ","), "type": i18n.GetMsgByKey(websiteSSL.Provider)})
 		if websiteSSL.Provider == constant.DNSAccount {
 			startMsg = startMsg + i18n.GetMsgWithMap("DNSAccountName", map[string]interface{}{"name": dnsAccount.Name, "type": dnsAccount.Type})
@@ -402,8 +457,7 @@ func (w WebsiteSSLService) obtainSSL(id uint, autoRenew bool) error {
 				workDir = websiteSSL.Dir
 			}
 			printSSLLog(logger, "ExecShellStart", nil)
-			cmdMgr := cmd.NewCommandMgr(cmd.WithTimeout(30*time.Minute), cmd.WithLogger(logger), cmd.WithWorkDir(workDir))
-			if err = cmdMgr.RunBashC(websiteSSL.Shell); err != nil {
+			if err = runShellScriptFile(workDir, websiteSSL.Shell, logger); err != nil {
 				printSSLLog(logger, "ErrExecShell", map[string]interface{}{"err": err.Error()})
 			} else {
 				printSSLLog(logger, "ExecShellSuccess", nil)
@@ -423,20 +477,18 @@ func (w WebsiteSSLService) obtainSSL(id uint, autoRenew bool) error {
 					printSSLLog(logger, "ErrUpdateWebsiteSSL", map[string]interface{}{"name": website.PrimaryDomain, "err": err.Error()})
 				}
 			}
-			nginxInstall, err := getAppInstallByKey(constant.AppOpenresty)
-			if err != nil {
-				return
+			if nginxInstall, err := getAppInstallByKey(constant.AppOpenresty); err == nil {
+				if err := opNginx(nginxInstall.ContainerName, constant.NginxReload); err != nil {
+					printSSLLog(logger, "ErrSSLApply", nil)
+				} else {
+					printSSLLog(logger, "ApplyWebSiteSSLSuccess", nil)
+				}
 			}
-			if err := opNginx(nginxInstall.ContainerName, constant.NginxReload); err != nil {
-				printSSLLog(logger, "ErrSSLApply", nil)
-				return
-			}
-			printSSLLog(logger, "ApplyWebSiteSSLSuccess", nil)
 		}
 		reloadSystemSSL(websiteSSL, logger)
 		if websiteSSL.PushNode {
 			printSSLLog(logger, "StartPushSSLToNode", nil)
-			if err = xpack.PushSSLToNode(websiteSSL); err != nil {
+			if err = xpack.MultiNodeProvider.PushSSLToNode(websiteSSL); err != nil {
 				printSSLLog(logger, "PushSSLToNodeFailed", map[string]interface{}{"err": err.Error()})
 				return
 			}
@@ -447,6 +499,23 @@ func (w WebsiteSSLService) obtainSSL(id uint, autoRenew bool) error {
 	return nil
 }
 
+func runShellScriptFile(workDir, shell string, logger *log.Logger) error {
+	file, err := os.CreateTemp("", "1panel-shell-*.sh")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(file.Name()) }()
+	if _, err := file.WriteString(shell); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	cmdMgr := cmd.NewCommandMgr(cmd.WithTimeout(30*time.Minute), cmd.WithLogger(logger), cmd.WithWorkDir(workDir))
+	return cmdMgr.Run("bash", file.Name())
+}
+
 func handleError(websiteSSL *model.WebsiteSSL, err error) {
 	if websiteSSL.Status == constant.SSLInit || websiteSSL.Status == constant.SSLError {
 		websiteSSL.Status = constant.StatusError
@@ -454,7 +523,9 @@ func handleError(websiteSSL *model.WebsiteSSL, err error) {
 		websiteSSL.Status = constant.SSLApplyError
 	}
 	websiteSSL.Message = err.Error()
-	legoLogger.Logger.Println(i18n.GetErrMsg("ApplySSLFailed", map[string]interface{}{"domain": websiteSSL.PrimaryDomain, "detail": err.Error()}))
+	// lego v5 uses slog; use the same global default logger to write the
+	// failure message to the SSL log.
+	legoLogger.Default().Error(i18n.GetErrMsg("ApplySSLFailed", map[string]interface{}{"domain": websiteSSL.PrimaryDomain, "detail": err.Error()}))
 	_ = websiteSSLRepo.Save(websiteSSL)
 }
 

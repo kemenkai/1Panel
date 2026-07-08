@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/1Panel-dev/1Panel/agent/app/dto"
@@ -23,7 +25,7 @@ import (
 	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/shirou/gopsutil/v4/load"
 	"github.com/shirou/gopsutil/v4/mem"
-	"github.com/shirou/gopsutil/v4/net"
+	gnet "github.com/shirou/gopsutil/v4/net"
 )
 
 const (
@@ -34,7 +36,7 @@ const (
 
 type AlertTaskHelper struct {
 	DiskIO chan []disk.IOCountersStat
-	NetIO  chan []net.IOCountersStat
+	NetIO  chan []gnet.IOCountersStat
 }
 
 type IAlertTaskHelper interface {
@@ -46,6 +48,7 @@ type IAlertTaskHelper interface {
 
 var cpuLoad1, cpuLoad5, cpuLoad15 []float64
 var memoryLoad1, memoryLoad5, memoryLoad15 []float64
+var alertTaskMu sync.Mutex
 
 var baseTypes = map[string]bool{"ssl": true, "siteEndTime": true, "panelPwdEndTime": true, "panelUpdate": true}
 var resourceTypes = map[string]bool{"cpu": true, "memory": true, "disk": true, "load": true, "panelLogin": true, "sshLogin": true, "nodeException": true, "licenseException": true}
@@ -53,36 +56,53 @@ var resourceTypes = map[string]bool{"cpu": true, "memory": true, "disk": true, "
 func NewIAlertTaskHelper() IAlertTaskHelper {
 	return &AlertTaskHelper{
 		DiskIO: make(chan []disk.IOCountersStat, 1),
-		NetIO:  make(chan []net.IOCountersStat, 1),
+		NetIO:  make(chan []gnet.IOCountersStat, 1),
 	}
 }
 func (m *AlertTaskHelper) StartTask() {
+	alertTaskMu.Lock()
+	defer alertTaskMu.Unlock()
+	m.startTaskLocked()
+}
+
+func (m *AlertTaskHelper) startTaskLocked() {
 	baseAlert, resourceAlert := m.getClassifiedAlerts()
 	if len(baseAlert) == 0 && len(resourceAlert) == 0 {
 		return
 	}
-	handleBaseAlerts(baseAlert)
-	handleResourceAlerts(resourceAlert)
+	handleBaseAlertsLocked(baseAlert)
+	handleResourceAlertsLocked(resourceAlert)
 }
 
 func (m *AlertTaskHelper) StopTask() {
-	stopBaseJob()
-	stopResourceJob()
+	alertTaskMu.Lock()
+	defer alertTaskMu.Unlock()
+	stopBaseJobLocked()
+	stopResourceJobLocked()
 }
 
 func (m *AlertTaskHelper) ResetTask() {
-	m.StopTask()
-	m.StartTask()
+	alertTaskMu.Lock()
+	defer alertTaskMu.Unlock()
+	stopBaseJobLocked()
+	stopResourceJobLocked()
+	m.startTaskLocked()
 }
 
 func (m *AlertTaskHelper) InitTask(alertType string) {
+	alertTaskMu.Lock()
+	defer alertTaskMu.Unlock()
+	m.initTaskLocked(alertType)
+}
+
+func (m *AlertTaskHelper) initTaskLocked(alertType string) {
 	resetAlertState(alertType)
 	if baseTypes[alertType] {
-		stopBaseJob()
+		stopBaseJobLocked()
 	} else if resourceTypes[alertType] {
-		stopResourceJob()
+		stopResourceJobLocked()
 	}
-	m.StartTask()
+	m.startTaskLocked()
 }
 
 func resetAlertState(alertType string) {
@@ -110,14 +130,14 @@ func (m *AlertTaskHelper) getClassifiedAlerts() (baseAlerts, resourceAlerts []dt
 	return
 }
 
-func handleBaseAlerts(baseAlerts []dto.AlertDTO) {
+func handleBaseAlertsLocked(baseAlerts []dto.AlertDTO) {
 	if len(baseAlerts) == 0 {
-		stopBaseJob()
+		stopBaseJobLocked()
 		return
 	}
 	if global.AlertBaseJobID == 0 {
 		baseTask(baseAlerts)
-		jobID, err := global.Cron.AddFunc("*/30 * * * *", func() {
+		jobID, err := global.Cron.AddFunc("@every 30m", func() {
 			baseTask(baseAlerts)
 		})
 		if err != nil {
@@ -129,9 +149,9 @@ func handleBaseAlerts(baseAlerts []dto.AlertDTO) {
 	}
 }
 
-func handleResourceAlerts(resourceAlerts []dto.AlertDTO) {
+func handleResourceAlertsLocked(resourceAlerts []dto.AlertDTO) {
 	if len(resourceAlerts) == 0 {
-		stopResourceJob()
+		stopResourceJobLocked()
 		return
 	}
 	if global.AlertResourceJobID == 0 {
@@ -147,7 +167,7 @@ func handleResourceAlerts(resourceAlerts []dto.AlertDTO) {
 	}
 }
 
-func stopBaseJob() {
+func stopBaseJobLocked() {
 	if global.AlertBaseJobID != 0 {
 		global.Cron.Remove(global.AlertBaseJobID)
 		global.AlertBaseJobID = 0
@@ -155,7 +175,7 @@ func stopBaseJob() {
 	}
 }
 
-func stopResourceJob() {
+func stopResourceJobLocked() {
 	if global.AlertResourceJobID != 0 {
 		global.Cron.Remove(global.AlertResourceJobID)
 		global.AlertResourceJobID = 0
@@ -174,10 +194,16 @@ func baseTask(baseAlert []dto.AlertDTO) {
 		case "siteEndTime":
 			loadWebsiteInfo(alert)
 		case "panelPwdEndTime":
+			if global.CONF.Base.IsEnterprise {
+				continue
+			}
 			if global.IsMaster {
 				loadPanelPwd(alert)
 			}
 		case "panelUpdate":
+			if global.CONF.Base.IsEnterprise {
+				continue
+			}
 			if global.IsMaster {
 				loadPanelUpdate(alert)
 			}
@@ -210,6 +236,9 @@ func resourceTask(resourceAlert []dto.AlertDTO) {
 				loadNodeException(alert)
 			}
 		case "licenseException":
+			if global.CONF.Base.IsEnterprise {
+				continue
+			}
 			if execute && global.IsMaster {
 				loadLicenseException(alert)
 			}
@@ -461,6 +490,7 @@ func loadPanelLogin(alert dto.AlertDTO) {
 	if err != nil {
 		global.LOG.Errorf("Failed to check recent failed ip login logs: %v", err)
 	}
+	records = filterLoginLogsNotInWhitelist(records, whitelist)
 	if len(records) > 0 {
 		quota := strings.Join(func() []string {
 			var ips []string
@@ -510,6 +540,7 @@ func loadSSHLogin(alert dto.AlertDTO) {
 	if err != nil {
 		global.LOG.Errorf("Failed to check recent failed ip ssh login logs: %v", err)
 	}
+	records = filterSSHLoginEntriesNotInWhitelist(records, whitelist)
 	if len(records) > 0 {
 		quota := strings.Join(records, "\n")
 		params := []dto.Param{
@@ -528,9 +559,63 @@ func loadSSHLogin(alert dto.AlertDTO) {
 	}
 }
 
+func filterLoginLogsNotInWhitelist(records []model.LoginLog, whitelist []string) []model.LoginLog {
+	filtered := make([]model.LoginLog, 0, len(records))
+	for _, record := range records {
+		if !isIPInWhitelist(record.IP, whitelist) {
+			filtered = append(filtered, record)
+		}
+	}
+	return filtered
+}
+
+func filterSSHLoginEntriesNotInWhitelist(records []string, whitelist []string) []string {
+	filtered := make([]string, 0, len(records))
+	for _, record := range records {
+		ip := record
+		if idx := strings.Index(record, "-"); idx >= 0 {
+			ip = record[:idx]
+		}
+		if !isIPInWhitelist(ip, whitelist) {
+			filtered = append(filtered, record)
+		}
+	}
+	return filtered
+}
+
+func isIPInWhitelist(ip string, whitelist []string) bool {
+	targetIP := net.ParseIP(strings.TrimSpace(ip))
+	if targetIP == nil {
+		return false
+	}
+	for _, item := range whitelist {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if item == ip {
+			return true
+		}
+		if whiteIP := net.ParseIP(item); whiteIP != nil {
+			if whiteIP.Equal(targetIP) {
+				return true
+			}
+			continue
+		}
+		_, ipNet, err := net.ParseCIDR(item)
+		if err != nil {
+			continue
+		}
+		if ipNet.Contains(targetIP) {
+			return true
+		}
+	}
+	return false
+}
+
 func loadNodeException(alert dto.AlertDTO) {
 	// only master alert
-	failCount, err := xpack.GetNodeErrorAlert()
+	failCount, err := xpack.AlertProvider.GetNodeErrorAlert()
 	if err != nil {
 		global.LOG.Errorf("error getting node, err: %s", err)
 		return
@@ -559,7 +644,7 @@ func loadNodeException(alert dto.AlertDTO) {
 
 func loadLicenseException(alert dto.AlertDTO) {
 	// only master alert
-	failCount, err := xpack.GetLicenseErrorAlert()
+	failCount, err := xpack.AlertProvider.GetLicenseErrorAlert()
 	if err != nil {
 		global.LOG.Errorf("error getting license, err: %s", err)
 		return
@@ -594,91 +679,136 @@ func sendAlerts(alert dto.AlertDTO, alertType, quota, quotaType string, params [
 	if newDate.IsZero() || calculateMinutesDifference(newDate) > ResourceAlertInterval {
 		for _, m := range methods {
 			m = strings.TrimSpace(m)
-			switch m {
-			case constant.SMS:
-				if !alertUtil.CheckSMSSendLimit(constant.SMS) {
-					continue
-				}
-				todayCount, isValid := canSendAlertToday(alertType, quotaType, alert.SendCount, constant.SMS)
-				if !isValid {
-					continue
-				}
-				create := dto.AlertLogCreate{
-					Type:    alertType,
-					AlertId: alert.ID,
-					Count:   todayCount + 1,
-				}
-				alertErr := xpack.CreateSMSAlertLog(alertType, alert, create, quotaType, params, constant.SMS)
-				if alertErr != nil {
-					global.LOG.Infof("%s alert sms push faild, err: %v", alertType, alertErr.Error())
-					continue
-				}
-				alertUtil.CreateNewAlertTask(quota, alertType, quotaType, constant.SMS)
-			case constant.Email:
-				todayCount, isValid := canSendAlertToday(alertType, quotaType, alert.SendCount, constant.Email)
-				if !isValid {
-					continue
-				}
-				create := dto.AlertLogCreate{
-					Type:    alertType,
-					AlertId: alert.ID,
-					Count:   todayCount + 1,
-				}
-				alertInfo := alert
-				alertInfo.Type = alertType
-				create.AlertRule = alertUtil.ProcessAlertRule(alert)
-				create.AlertDetail = alertUtil.ProcessAlertDetail(alertInfo, quotaType, params, constant.Email)
-				transport := xpack.LoadRequestTransport()
-				agentInfo, _ := xpack.GetAgentInfo()
-				alertErr := alertUtil.CreateEmailAlertLog(create, alertInfo, params, transport, agentInfo)
-				if alertErr != nil {
-					global.LOG.Infof("%s alert email push faild, err: %v", alertType, alertErr.Error())
-					continue
-				}
-				alertUtil.CreateNewAlertTask(quota, alertType, quotaType, constant.Email)
-			case constant.WeCom, constant.DingTalk, constant.FeiShu:
-				todayCount, isValid := canSendAlertToday(alertType, quotaType, alert.SendCount, m)
-				if !isValid {
-					continue
-				}
-				var create = dto.AlertLogCreate{
-					Type:    alertUtil.GetCronJobType(alert.Type),
-					AlertId: alert.ID,
-					Count:   todayCount + 1,
-				}
-				transport := xpack.LoadRequestTransport()
-				agentInfo, _ := xpack.GetAgentInfo()
-				err := xpack.CreateWebhookAlertLog(alertType, alert, create, quotaType, params, m, transport, agentInfo)
-				if err != nil {
-					global.LOG.Infof("%s alert webhook %s push faild, err: %v", alertType, m, err)
-					continue
-				}
-				alertUtil.CreateNewAlertTask(quota, alertType, quotaType, m)
-			case constant.Bark:
-				todayCount, isValid := canSendAlertToday(alertType, quotaType, alert.SendCount, m)
-				if !isValid {
-					continue
-				}
-				var create = dto.AlertLogCreate{
-					Type:    alertUtil.GetCronJobType(alert.Type),
-					AlertId: alert.ID,
-					Count:   todayCount + 1,
-				}
-				alertInfo := alert
-				alertInfo.Type = alertType
-				create.AlertRule = alertUtil.ProcessAlertRule(alert)
-				create.AlertDetail = alertUtil.ProcessAlertDetail(alertInfo, quotaType, params, m)
-				transport := xpack.LoadRequestTransport()
-				agentInfo, _ := xpack.GetAgentInfo()
-				alertErr := alertUtil.CreateBarkAlertLog(create, alertInfo, params, transport, agentInfo)
-				if alertErr != nil {
-					global.LOG.Infof("%s alert %s push failed, err: %v", alertType, m, alertErr.Error())
-					continue
-				}
-				alertUtil.CreateNewAlertTask(quota, alertType, quotaType, m)
-			default:
+			if configId, err := strconv.ParseUint(m, 10, 64); err == nil {
+				sendAlertsByConfigId(alert, alertType, quota, quotaType, params, uint(configId))
+			} else {
+				sendAlertsByLegacyMethod(alert, alertType, quota, quotaType, params, m)
 			}
 		}
+	}
+}
+
+func sendAlertsByConfigId(alert dto.AlertDTO, alertType, quota, quotaType string, params []dto.Param, configId uint) {
+	config, err := alertRepo.GetConfigById(configId)
+	if err != nil {
+		global.LOG.Errorf("alert config not found for id %d: %v", configId, err)
+		return
+	}
+	doSendAlert(alert, alertType, quota, quotaType, params, config)
+}
+
+func sendAlertsByLegacyMethod(alert dto.AlertDTO, alertType, quota, quotaType string, params []dto.Param, method string) {
+	typeMap := map[string]string{
+		"mail":        constant.Email,
+		constant.Bark: constant.Bark,
+		constant.SMS:  constant.SMS,
+	}
+	configType, ok := typeMap[method]
+	if !ok {
+		configType = method
+	}
+	config, err := alertRepo.GetConfig(alertRepo.WithByType(configType))
+	if err != nil {
+		global.LOG.Errorf("alert config not found for type %s: %v", configType, err)
+		return
+	}
+	doSendAlert(alert, alertType, quota, quotaType, params, config)
+}
+
+func doSendAlert(alert dto.AlertDTO, alertType, quota, quotaType string, params []dto.Param, config model.AlertConfig) {
+	if !alertUtil.IsAlertConfigEnabled(config) {
+		return
+	}
+	methodStr := strconv.Itoa(int(config.ID))
+	switch config.Type {
+	case constant.SMS:
+		if !alertUtil.CheckSMSSendLimit(config, methodStr) {
+			return
+		}
+		todayCount, isValid := canSendAlertToday(alertType, quotaType, alert.SendCount, methodStr)
+		if !isValid {
+			return
+		}
+		create := dto.AlertLogCreate{
+			Type:    alertType,
+			AlertId: alert.ID,
+			Count:   todayCount + 1,
+			Method:  methodStr,
+		}
+		alertErr := xpack.AlertProvider.CreateSMSAlertLog(alertType, alert, create, quotaType, params, config, methodStr)
+		if alertErr != nil {
+			global.LOG.Infof("%s alert sms push faild, err: %v", alertType, alertErr.Error())
+			return
+		}
+		alertUtil.CreateNewAlertTask(quota, alertType, quotaType, methodStr)
+
+	case constant.Email:
+		todayCount, isValid := canSendAlertToday(alertType, quotaType, alert.SendCount, methodStr)
+		if !isValid {
+			return
+		}
+		create := dto.AlertLogCreate{
+			Type:    alertType,
+			AlertId: alert.ID,
+			Count:   todayCount + 1,
+			Method:  methodStr,
+		}
+		alertInfo := alert
+		alertInfo.Type = alertType
+		create.AlertRule = alertUtil.ProcessAlertRule(alert)
+		create.AlertDetail = alertUtil.ProcessAlertDetail(alertInfo, quotaType, params, constant.Email)
+		transport := xpack.MultiNodeProvider.LoadRequestTransport()
+		agentInfo, _ := xpack.MultiNodeProvider.GetAgentInfo()
+		alertErr := alertUtil.CreateEmailAlertLog(create, alertInfo, params, transport, agentInfo, config)
+		if alertErr != nil {
+			global.LOG.Infof("%s alert email push faild, err: %v", alertType, alertErr.Error())
+			return
+		}
+		alertUtil.CreateNewAlertTask(quota, alertType, quotaType, methodStr)
+
+	case constant.Bark:
+		todayCount, isValid := canSendAlertToday(alertType, quotaType, alert.SendCount, methodStr)
+		if !isValid {
+			return
+		}
+		create := dto.AlertLogCreate{
+			Type:    alertType,
+			AlertId: alert.ID,
+			Count:   todayCount + 1,
+			Method:  methodStr,
+		}
+		alertInfo := alert
+		alertInfo.Type = alertType
+		create.AlertRule = alertUtil.ProcessAlertRule(alert)
+		create.AlertDetail = alertUtil.ProcessAlertDetail(alertInfo, quotaType, params, constant.Bark)
+		transport := xpack.MultiNodeProvider.LoadRequestTransport()
+		agentInfo, _ := xpack.MultiNodeProvider.GetAgentInfo()
+		alertErr := alertUtil.CreateBarkAlertLog(create, alertInfo, params, transport, agentInfo, config)
+		if alertErr != nil {
+			global.LOG.Infof("%s alert %s push failed, err: %v", alertType, methodStr, alertErr.Error())
+			return
+		}
+		alertUtil.CreateNewAlertTask(quota, alertType, quotaType, methodStr)
+
+	case constant.WeCom, constant.DingTalk, constant.FeiShu:
+		todayCount, isValid := canSendAlertToday(alertType, quotaType, alert.SendCount, methodStr)
+		if !isValid {
+			return
+		}
+		create := dto.AlertLogCreate{
+			Type:    alertType,
+			AlertId: alert.ID,
+			Count:   todayCount + 1,
+			Method:  methodStr,
+		}
+		transport := xpack.MultiNodeProvider.LoadRequestTransport()
+		agentInfo, _ := xpack.MultiNodeProvider.GetAgentInfo()
+		alertErr := xpack.AlertProvider.CreateWebhookAlertLog(alertType, alert, create, quotaType, params, config, transport, agentInfo)
+		if alertErr != nil {
+			global.LOG.Infof("%s alert webhook %s push faild, err: %v", alertType, methodStr, alertErr)
+			return
+		}
+		alertUtil.CreateNewAlertTask(quota, alertType, quotaType, methodStr)
 	}
 }
 

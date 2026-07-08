@@ -52,8 +52,8 @@ import { Rules } from '@/global/form-rules';
 import { MsgError, MsgSuccess } from '@/utils/message';
 import { checkFile } from '@/api/modules/files';
 import { routerToFileWithPath } from '@/utils/router';
-import { GlobalStore } from '@/store';
-const globalStore = GlobalStore();
+import { useGlobalStore } from '@/composables/useGlobalStore';
+const { currentNode } = useGlobalStore();
 
 const drawerVisible = ref(false);
 const loading = ref();
@@ -112,8 +112,8 @@ const toFolder = async () => {
 };
 
 const loadBackupDir = async () => {
-    const res = await getLocalBackupDir(globalStore.currentNode);
-    backupPath.value = res.data;
+    const res = await getLocalBackupDir(currentNode.value);
+    backupPath.value = `${res.data}${res.data.endsWith('/') ? '' : '/'}system_snapshot`;
 };
 
 const submitImport = async (formEl: FormInstance | undefined) => {

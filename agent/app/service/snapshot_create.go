@@ -377,6 +377,7 @@ func snapAppImage(snap snapHelper, req dto.SnapshotCreate, targetDir string) err
 		snap.Task.Log("load docker client failed, skip save app images")
 		return nil
 	}
+	defer client.Close()
 	images, err := client.ImageList(context.Background(), image.ListOptions{})
 	if err != nil {
 		snap.Task.Log("list docker images failed, skip save app images")
@@ -405,7 +406,12 @@ func snapAppImage(snap snapHelper, req dto.SnapshotCreate, targetDir string) err
 	if len(imageList) != 0 {
 		snap.Task.Log(strings.Join(imageList, " "))
 		snap.Task.Logf("docker save %s | gzip -c > %s", strings.Join(imageList, " "), path.Join(targetDir, "images.tar.gz"))
-		if err := cmd.RunDefaultBashCf("docker save %s | gzip -c > %s", strings.Join(imageList, " "), path.Join(targetDir, "images.tar.gz")); err != nil {
+		outputPath := path.Join(targetDir, "images.tar.gz")
+		cmdMgr := cmd.NewCommandMgr()
+		if _, err := cmdMgr.RunPipeToFile(outputPath,
+			cmd.PipeCommand{Name: "docker", Args: append([]string{"save"}, imageList...)},
+			cmd.PipeCommand{Name: "gzip", Args: []string{"-c"}},
+		); err != nil {
 			snap.Task.LogFailedWithErr(i18n.GetMsgByKey("SnapDockerSave"), err)
 			return err
 		}

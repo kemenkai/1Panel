@@ -5,7 +5,6 @@ import (
 )
 
 type SettingInfo struct {
-	UserName            string `json:"userName"`
 	SystemVersion       string `json:"systemVersion"`
 	DeveloperMode       string `json:"developerMode"`
 	UpgradeBackupCopies string `json:"upgradeBackupCopies"`
@@ -31,10 +30,7 @@ type SettingInfo struct {
 	DashboardMemoVisible       string `json:"dashboardMemoVisible"`
 	DashboardSimpleNodeVisible string `json:"dashboardSimpleNodeVisible"`
 	ExpirationDays             string `json:"expirationDays"`
-	ExpirationTime             string `json:"expirationTime"`
 	ComplexityVerification     string `json:"complexityVerification"`
-	MFAStatus                  string `json:"mfaStatus"`
-	MFAInterval                string `json:"mfaInterval"`
 
 	AppStoreVersion      string `json:"appStoreVersion"`
 	AppStoreLastModified string `json:"appStoreLastModified"`
@@ -49,19 +45,38 @@ type SettingInfo struct {
 	ProxyUser       string `json:"proxyUser"`
 	ProxyPasswd     string `json:"proxyPasswd"`
 	ProxyPasswdKeep string `json:"proxyPasswdKeep"`
-
-	ApiInterfaceStatus string `json:"apiInterfaceStatus"`
-	ApiKey             string `json:"apiKey"`
-	IpWhiteList        string `json:"ipWhiteList"`
-	ApiKeyValidityTime string `json:"apiKeyValidityTime"`
 }
 
-type SettingKey struct {
-	Key string `json:"key" validate:"required,oneof=ScriptSync"`
+type SettingBaseInfo struct {
+	SystemVersion       string `json:"systemVersion"`
+	DeveloperMode       string `json:"developerMode"`
+	UpgradeBackupCopies string `json:"upgradeBackupCopies"`
+
+	Port        string `json:"port"`
+	Ipv6        string `json:"ipv6"`
+	BindAddress string `json:"bindAddress"`
+	PanelName   string `json:"panelName"`
+	Edition     string `json:"edition"`
+	Theme       string `json:"theme"`
+	MenuTabs    string `json:"menuTabs"`
+	Language    string `json:"language"`
+	HideMenu    string `json:"hideMenu"`
+	DocSource   string `json:"docSource"`
+
+	ServerPort             string `json:"serverPort"`
+	SecurityEntrance       string `json:"securityEntrance"`
+	ComplexityVerification string `json:"complexityVerification"`
+	NoAuthSetting          string `json:"noAuthSetting"`
+	ProxyType              string `json:"proxyType"`
+
+	ScriptSync string `json:"scriptSync"`
+
+	DashboardMemoVisible       string `json:"dashboardMemoVisible"`
+	DashboardSimpleNodeVisible string `json:"dashboardSimpleNodeVisible"`
 }
 
 type SettingUpdate struct {
-	Key   string `json:"key" validate:"required"`
+	Key   string `json:"key" validate:"required,base_setting_key"`
 	Value string `json:"value"`
 }
 
@@ -217,13 +232,6 @@ type MenuLabelSort struct {
 	Sort  int    `json:"sort"`
 }
 
-type ApiInterfaceConfig struct {
-	ApiInterfaceStatus string `json:"apiInterfaceStatus"`
-	ApiKey             string `json:"apiKey"`
-	IpWhiteList        string `json:"ipWhiteList"`
-	ApiKeyValidityTime string `json:"apiKeyValidityTime"`
-}
-
 type TerminalInfo struct {
 	LineHeight        string `json:"lineHeight"`
 	LetterSpacing     string `json:"letterSpacing"`
@@ -251,8 +259,9 @@ type AppstoreConfig struct {
 type LoginSetting struct {
 	IsDemo         bool   `json:"isDemo"`
 	IsIntl         bool   `json:"isIntl"`
-	IsOffLine      bool   `json:"isOffLine"`
+	IsOffline      bool   `json:"isOffline"`
 	IsFxplay       bool   `json:"isFxplay"`
+	IsEnterprise   bool   `json:"isEnterprise"`
 	Language       string `json:"language"`
 	MenuTabs       string `json:"menuTabs"`
 	PanelName      string `json:"panelName"`

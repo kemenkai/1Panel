@@ -1,11 +1,11 @@
 import { defineStore } from 'pinia';
+import type { StoreDefinition } from 'pinia';
 import { MenuState } from '../interface';
 import piniaPersistConfig from '@/config/pinia-persist';
 import { RouteRecordRaw } from 'vue-router';
 const whiteList = ['/login', '/error'];
 
-export const MenuStore = defineStore({
-    id: 'MenuState',
+export const MenuStore = defineStore('MenuState', {
     state: (): MenuState => ({
         isCollapse: false,
         menuList: [],
@@ -29,6 +29,6 @@ export const MenuStore = defineStore({
         },
     },
     persist: piniaPersistConfig('MenuStore'),
-});
+}) as StoreDefinition<'MenuState', MenuState, any, any>;
 
 export default MenuStore;

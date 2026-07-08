@@ -10,7 +10,7 @@ on:
 
 env:
   GO_VERSION: '1.25.7'
-  NODE_VERSION: '22.12.0'
+  NODE_VERSION: '24.11.1'
 
 jobs:
   test:
@@ -41,13 +41,15 @@ jobs:
           go build ./...
           GOOS=windows go build ./...
           go vet ./app/service/
-          go test ./app/service/ -count=1
+          go test ./... -count=1
 
-      - name: Compile core (linux + windows cross-compile)
+      - name: Compile and test core (linux + windows cross-compile)
         run: |
           cd core
           go build ./...
           GOOS=windows go build ./...
+          go vet ./...
+          go test ./... -count=1
 
   # Native Windows test run exercises the platform-aware assertions that a
   # linux GOOS=windows cross-compile cannot execute. Windows runners bill at

@@ -40,6 +40,7 @@ func HandleGet(url string) (*http.Response, error) {
 		}
 	}
 	if resp.StatusCode == 404 {
+		_ = resp.Body.Close()
 		return nil, buserr.New("ErrHttpReqNotFound")
 	}
 
@@ -47,7 +48,7 @@ func HandleGet(url string) (*http.Response, error) {
 }
 
 func HandleRequest(url, method string, timeout int) (int, []byte, error) {
-	transport := xpack.LoadRequestTransport()
+	transport := xpack.MultiNodeProvider.LoadRequestTransport()
 	client := http.Client{Timeout: time.Duration(timeout) * time.Second, Transport: transport}
 	return HandleRequestWithClient(&client, url, method, timeout)
 }
@@ -71,6 +72,7 @@ func HandleRequestWithClient(client *http.Client, url, method string, timeout in
 	if err != nil {
 		return 0, nil, err
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		return 0, nil, errors.New(resp.Status)
 	}
@@ -78,7 +80,6 @@ func HandleRequestWithClient(client *http.Client, url, method string, timeout in
 	if err != nil {
 		return 0, nil, err
 	}
-	defer resp.Body.Close()
 
 	return resp.StatusCode, body, nil
 }
@@ -130,7 +131,7 @@ func RequestFile(url, method string, timeout int) (io.ReadCloser, context.Cancel
 			return
 		}
 	}()
-	transport := xpack.LoadRequestTransport()
+	transport := xpack.MultiNodeProvider.LoadRequestTransport()
 	client := http.Client{Timeout: time.Duration(timeout) * time.Second, Transport: transport}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout)*time.Second)
 	request, err := http.NewRequestWithContext(ctx, method, url, nil)
@@ -143,6 +144,7 @@ func RequestFile(url, method string, timeout int) (io.ReadCloser, context.Cancel
 		return nil, cancel, err
 	}
 	if resp.StatusCode != http.StatusOK {
+		_ = resp.Body.Close()
 		return nil, cancel, errors.New(resp.Status)
 	}
 	return resp.Body, cancel, nil

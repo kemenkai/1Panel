@@ -4,7 +4,7 @@
             <div class="hermes-chat-dialog">
                 <div class="hermes-chat-dialog__sidebar" v-loading="loading">
                     <div class="hermes-chat-dialog__toolbar">
-                        <el-button type="primary" @click="openNewChat">
+                        <el-button v-permission="'ai_agent_manage'" type="primary" @click="openNewChat">
                             {{ t('aiTools.agents.hermesChatNewChat') }}
                         </el-button>
                         <el-button plain @click="loadSessions">{{ $t('commons.button.refresh') }}</el-button>
@@ -45,6 +45,7 @@
                                     <template v-if="editingSessionId === item.id">
                                         <el-button
                                             link
+                                            v-permission="'ai_agent_manage'"
                                             type="primary"
                                             :disabled="!canSaveSessionTitle"
                                             @click.stop="saveSessionTitle(item)"
@@ -58,6 +59,7 @@
                                     <el-button
                                         v-else-if="!terminalOpen"
                                         link
+                                        v-permission="'ai_agent_manage'"
                                         icon="Edit"
                                         class="hermes-chat-dialog__edit-button"
                                         @mousedown.stop
@@ -66,6 +68,7 @@
                                     <el-button
                                         v-if="editingSessionId !== item.id"
                                         link
+                                        v-permission="'ai_agent_manage'"
                                         type="danger"
                                         icon="Delete"
                                         :disabled="isDeleteDisabled(item)"
@@ -154,7 +157,7 @@ const connectTerminal = async (initCmd: string) => {
         args += `&operateNode=${node.value}`;
     }
     terminalRef.value?.acceptParams({
-        endpoint: '/api/v2/containers/exec',
+        endpoint: '/api/v2/hosts/terminal/container',
         args,
         error: '',
         initCmd,

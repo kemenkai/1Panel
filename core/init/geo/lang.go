@@ -10,6 +10,7 @@ import (
 	"github.com/1Panel-dev/1Panel/core/global"
 	"github.com/1Panel-dev/1Panel/core/utils/cmd"
 	fileUtils "github.com/1Panel-dev/1Panel/core/utils/files"
+	"github.com/1Panel-dev/1Panel/core/utils/platform"
 )
 
 func Init() {
@@ -18,6 +19,12 @@ func Init() {
 
 func initLang() {
 	geoPath := path.Join(global.CONF.Base.InstallDir, "1panel/geo/GeoIP.mmdb")
+	if platform.Current() == platform.OSWindows {
+		if !fileUtils.Stat(geoPath) {
+			downloadGeoFromRemote(geoPath)
+		}
+		return
+	}
 	isLangExist := fileUtils.Stat("/usr/local/bin/lang/zh.sh")
 	isGeoExist := fileUtils.Stat(geoPath)
 	if isLangExist && isGeoExist {

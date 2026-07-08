@@ -521,7 +521,7 @@ const applyStatsToRows = (stats: Record<string, any>[]) => {
     }
 };
 
-const updateTags = (status: Record<string, number>) => {
+const updateTags = (status: Partial<Container.ContainerStatus>) => {
     const nextTags = [];
     if (status.containerCount) {
         nextTags.push({ key: 'all', count: status.containerCount });

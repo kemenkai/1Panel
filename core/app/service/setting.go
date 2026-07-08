@@ -33,6 +33,7 @@ import (
 	"github.com/1Panel-dev/1Panel/core/utils/encrypt"
 	"github.com/1Panel-dev/1Panel/core/utils/firewall"
 	"github.com/1Panel-dev/1Panel/core/utils/passkey"
+	platformUtils "github.com/1Panel-dev/1Panel/core/utils/platform"
 	"github.com/1Panel-dev/1Panel/core/utils/req_helper/proxy_local"
 	"github.com/1Panel-dev/1Panel/core/utils/xpack"
 	"github.com/gin-gonic/gin"
@@ -87,6 +88,9 @@ func (u *SettingService) GetSettingInfo() (*dto.SettingInfo, error) {
 		var menus []dto.ShowMenu
 		if err := json.Unmarshal([]byte(hideMenu), &menus); err == nil {
 			sortShowMenus(menus)
+			if platformUtils.Current() == platformUtils.OSWindows {
+				menus = filterWindowsLiteMenus(menus)
+			}
 			if sortedBytes, err := json.Marshal(menus); err == nil {
 				settingMap["HideMenu"] = string(sortedBytes)
 			}
@@ -125,6 +129,24 @@ func sortShowMenus(menus []dto.ShowMenu) {
 		}
 		return menus[i].Sort < menus[j].Sort
 	})
+}
+
+func filterWindowsLiteMenus(menus []dto.ShowMenu) []dto.ShowMenu {
+	allowedLabels := map[string]struct{}{
+		"Home-Menu":    {},
+		"Enhance-Menu": {},
+		"Log-Menu":     {},
+		"Setting-Menu": {},
+	}
+
+	var filtered []dto.ShowMenu
+	for _, menu := range menus {
+		if _, ok := allowedLabels[menu.Label]; !ok {
+			continue
+		}
+		filtered = append(filtered, menu)
+	}
+	return filtered
 }
 
 func (u *SettingService) Update(key, value string) error {

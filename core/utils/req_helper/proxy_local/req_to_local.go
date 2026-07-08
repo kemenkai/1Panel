@@ -16,26 +16,30 @@ import (
 
 	"github.com/1Panel-dev/1Panel/core/app/dto"
 	"github.com/1Panel-dev/1Panel/core/i18n"
+	"github.com/1Panel-dev/1Panel/core/utils/platform"
 )
 
 func NewLocalClient(reqUrl, reqMethod string, body io.Reader, ctx *gin.Context) (interface{}, error) {
-	sockPath := "/etc/1panel/agent.sock"
-	if _, err := os.Stat(sockPath); err != nil {
-		return nil, fmt.Errorf("no such agent.sock find in localhost, err: %v", err)
-	}
-	dialUnix := func() (conn net.Conn, err error) {
-		return net.Dial("unix", sockPath)
-	}
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return dialUnix()
+			if platform.UseLocalAgentSocket() {
+				if _, err := os.Stat(platform.LocalAgentSockPath); err != nil {
+					return nil, fmt.Errorf("no such agent.sock find in localhost, err: %v", err)
+				}
+				return net.Dial("unix", platform.LocalAgentSockPath)
+			}
+			return net.Dial("tcp", platform.LocalAgentHTTPAddr)
 		},
 	}
 	client := &http.Client{
 		Transport: transport,
 	}
 	defer client.CloseIdleConnections()
-	parsedURL, err := url.Parse("http://unix")
+	targetHost := "unix"
+	if !platform.UseLocalAgentSocket() {
+		targetHost = platform.LocalAgentHTTPAddr
+	}
+	parsedURL, err := url.Parse("http://" + targetHost)
 	if err != nil {
 		return nil, fmt.Errorf("handle url Parse failed, err: %v \n", err)
 	}

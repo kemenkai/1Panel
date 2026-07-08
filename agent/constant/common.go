@@ -12,6 +12,7 @@ const (
 	TypeSSL           = "ssl"
 	TypeSystem        = "system"
 	TypeTask          = "task"
+	TypeWindowsService = "windows-service"
 	TypeApp           = "app"
 	TypeImagePull     = "image-pull"
 	TypeImagePush     = "image-push"

@@ -12,6 +12,7 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/app/model"
 	"github.com/1Panel-dev/1Panel/agent/app/task"
 	"github.com/1Panel-dev/1Panel/agent/global"
+	"github.com/1Panel-dev/1Panel/agent/utils/platform"
 	"github.com/docker/cli/cli/config"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
@@ -26,7 +27,7 @@ func NewDockerClient() (*client.Client, error) {
 	var settingItem model.Setting
 	_ = global.DB.Where("key = ?", "DockerSockPath").First(&settingItem).Error
 	if len(settingItem.Value) == 0 {
-		settingItem.Value = "unix:///var/run/docker.sock"
+		settingItem.Value = platform.DefaultDockerHost()
 	}
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithHost(settingItem.Value), client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -39,7 +40,7 @@ func NewClient() (Client, error) {
 	var settingItem model.Setting
 	_ = global.DB.Where("key = ?", "DockerSockPath").First(&settingItem).Error
 	if len(settingItem.Value) == 0 {
-		settingItem.Value = "unix:///var/run/docker.sock"
+		settingItem.Value = platform.DefaultDockerHost()
 	}
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithHost(settingItem.Value), client.WithAPIVersionNegotiation())
 	if err != nil {

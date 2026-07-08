@@ -303,14 +303,18 @@ func (m *MonitorService) Run() {
 		}
 	}
 	cpuCount, _ := psutil.CPUInfo.GetPhysicalCores(false)
-	loadInfo, _ := load.Avg()
-	itemModel.CpuLoad1 = loadInfo.Load1
-	itemModel.CpuLoad5 = loadInfo.Load5
-	itemModel.CpuLoad15 = loadInfo.Load15
-	itemModel.LoadUsage = loadInfo.Load1 / (float64(cpuCount*2) * 0.75) * 100
+	if loadInfo, err := load.Avg(); err == nil {
+		itemModel.CpuLoad1 = loadInfo.Load1
+		itemModel.CpuLoad5 = loadInfo.Load5
+		itemModel.CpuLoad15 = loadInfo.Load15
+		if cpuCount > 0 {
+			itemModel.LoadUsage = loadInfo.Load1 / (float64(cpuCount*2) * 0.75) * 100
+		}
+	}
 
-	memoryInfo, _ := mem.VirtualMemory()
-	itemModel.Memory = memoryInfo.UsedPercent
+	if memoryInfo, err := mem.VirtualMemory(); err == nil {
+		itemModel.Memory = memoryInfo.UsedPercent
+	}
 	topMem := loadTopMem()
 	if len(topMem) != 0 {
 		topMemItem, err := json.Marshal(topMem)

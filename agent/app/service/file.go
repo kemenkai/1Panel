@@ -36,7 +36,6 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/buserr"
 	"github.com/1Panel-dev/1Panel/agent/constant"
 	"golang.org/x/net/html/charset"
-	"golang.org/x/sys/unix"
 	"golang.org/x/text/transform"
 
 	"github.com/1Panel-dev/1Panel/agent/global"
@@ -220,7 +219,7 @@ func (f *FileService) buildChildNode(childNode *response.FileTree, fileInfo *fil
 	op.Path = fileInfo.Path
 	subInfo, err := files.NewFileInfo(op.FileOption)
 	if err != nil {
-		if os.IsPermission(err) || errors.Is(err, unix.EACCES) {
+		if os.IsPermission(err) || errors.Is(err, fs.ErrPermission) {
 			global.LOG.Infof("File Tree: Skipping %s due to permission denied\n", fileInfo.Path)
 			return nil
 		}
@@ -789,7 +788,7 @@ func (f *FileService) DepthDirSize(req request.DirSizeReq) ([]response.DepthDirS
 func (f *FileService) ReadLogByLine(req request.FileReadByLineReq) (*response.FileLineContent, error) {
 	logFilePath := ""
 	taskStatus := ""
-	if len(req.Name) != 0 {
+	if len(req.Name) != 0 && req.Type != constant.TypeWindowsService {
 		safeName := path.Base(req.Name)
 		if safeName != req.Name || strings.Contains(safeName, "..") {
 			return nil, buserr.New("ErrInvalidParams")
@@ -870,6 +869,16 @@ func (f *FileService) ReadLogByLine(req request.FileReadByLineReq) (*response.Fi
 		logFilePath, _ = ini_conf.GetIniValue(configPath, "supervisord", "logfile")
 	case constant.Supervisor:
 		logFilePath = path.Join(global.Dir.DataDir, "tools", "supervisord", "log", req.Name)
+	case constant.TypeWindowsService:
+		item, err := windowsServiceRepo.Get(repo.WithByID(req.ID))
+		if err != nil {
+			return nil, err
+		}
+		var exists bool
+		logFilePath, exists = resolveWindowsServicePrimaryLogPath(item.Name)
+		if !exists {
+			return nil, buserr.New("ErrHttpReqNotFound")
+		}
 	}
 
 	file, err := os.Open(logFilePath)
@@ -990,7 +999,7 @@ func (f *FileService) BatchGetRemarks(req request.FileRemarkBatch) map[string]st
 
 func (f *FileService) SetRemark(req request.FileRemarkUpdate) error {
 	if req.Remark == "" {
-		if err := unix.Lremovexattr(req.Path, fileRemarkXattr); err != nil {
+		if err := removeFileRemark(req.Path); err != nil {
 			if isXattrNotFound(err) {
 				return nil
 			}
@@ -1006,7 +1015,7 @@ func (f *FileService) SetRemark(req request.FileRemarkUpdate) error {
 	if len(encoded) >= fileRemarkEncodedMaxLen {
 		return buserr.WithDetail("ErrInvalidParams", "remark length must be less than 256", nil)
 	}
-	if err := unix.Lsetxattr(req.Path, fileRemarkXattr, []byte(encoded), 0); err != nil {
+	if err := setFileRemark(req.Path, []byte(encoded)); err != nil {
 		if isXattrNotSupported(err) {
 			return buserr.WithDetail("ErrInvalidParams", "xattr not supported", err)
 		}
@@ -1039,37 +1048,6 @@ func getValidGroups() (map[string]bool, error) {
 		return nil, fmt.Errorf("failed to scan /etc/group: %w", err)
 	}
 	return groupMap, nil
-}
-
-func getFileRemark(filePath string) (string, error) {
-	size, err := unix.Lgetxattr(filePath, fileRemarkXattr, nil)
-	if err != nil {
-		if isXattrNotFound(err) {
-			return "", nil
-		}
-		return "", err
-	}
-	if size == 0 {
-		return "", nil
-	}
-	buf := make([]byte, size)
-	n, err := unix.Lgetxattr(filePath, fileRemarkXattr, buf)
-	if err != nil {
-		return "", err
-	}
-	decoded, err := base64.StdEncoding.DecodeString(string(buf[:n]))
-	if err != nil {
-		return "", err
-	}
-	return string(decoded), nil
-}
-
-func isXattrNotSupported(err error) bool {
-	return errors.Is(err, unix.ENOTSUP) || errors.Is(err, unix.EOPNOTSUPP)
-}
-
-func isXattrNotFound(err error) bool {
-	return errors.Is(err, unix.ENODATA)
 }
 
 func getValidUsers(validGroups map[string]bool) ([]response.UserInfo, map[string]struct{}, error) {

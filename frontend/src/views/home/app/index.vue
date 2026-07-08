@@ -166,7 +166,7 @@ const search = async () => {
     await loadAppLauncher()
         .then((res) => {
             loading.value = false;
-            apps.value = res.data;
+            apps.value = res.data || [];
             for (const item of apps.value) {
                 if (item.detail && item.detail.length !== 0) {
                     item.currentRow = item.detail[0];

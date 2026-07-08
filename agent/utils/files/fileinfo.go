@@ -10,9 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/1Panel-dev/1Panel/agent/app/repo"
@@ -91,13 +89,14 @@ func NewFileInfo(op FileOption) (*FileInfo, error) {
 		Extension: filepath.Ext(info.Name()),
 		IsHidden:  IsHidden(op.Path),
 		Mode:      fmt.Sprintf("%04o", info.Mode().Perm()),
-		User:      GetUsername(info.Sys().(*syscall.Stat_t).Uid),
-		Uid:       strconv.FormatUint(uint64(info.Sys().(*syscall.Stat_t).Uid), 10),
-		Gid:       strconv.FormatUint(uint64(info.Sys().(*syscall.Stat_t).Gid), 10),
-		Group:     GetGroup(info.Sys().(*syscall.Stat_t).Gid),
 		MimeType:  GetMimeType(op.Path),
 		IsDetail:  op.IsDetail,
 	}
+	owner := resolveFileOwnership(info)
+	file.User = owner.User
+	file.Group = owner.Group
+	file.Uid = owner.UID
+	file.Gid = owner.GID
 	favoriteRepo := repo.NewIFavoriteRepo()
 	favorite, _ := favoriteRepo.GetFirst(favoriteRepo.WithByPath(op.Path))
 	if favorite.ID > 0 {
@@ -322,11 +321,12 @@ func (f *FileInfo) processFiles(files []FileSearchInfo, option FileOption) ([]*F
 			Extension: filepath.Ext(name),
 			Path:      fPath,
 			Mode:      fmt.Sprintf("%04o", df.Mode().Perm()),
-			User:      GetUsername(df.Sys().(*syscall.Stat_t).Uid),
-			Group:     GetGroup(df.Sys().(*syscall.Stat_t).Gid),
-			Uid:       strconv.FormatUint(uint64(df.Sys().(*syscall.Stat_t).Uid), 10),
-			Gid:       strconv.FormatUint(uint64(df.Sys().(*syscall.Stat_t).Gid), 10),
 		}
+		owner := resolveFileOwnership(df.FileInfo)
+		file.User = owner.User
+		file.Group = owner.Group
+		file.Uid = owner.UID
+		file.Gid = owner.GID
 		favoriteRepo := repo.NewIFavoriteRepo()
 		favorite, _ := favoriteRepo.GetFirst(favoriteRepo.WithByPath(fPath))
 		if favorite.ID > 0 {

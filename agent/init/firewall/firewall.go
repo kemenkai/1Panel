@@ -12,9 +12,13 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/utils/firewall"
 	firewallClient "github.com/1Panel-dev/1Panel/agent/utils/firewall/client"
 	"github.com/1Panel-dev/1Panel/agent/utils/firewall/client/iptables"
+	"github.com/1Panel-dev/1Panel/agent/utils/platform"
 )
 
 func Init() {
+	if platform.Current() == platform.OSWindows {
+		return
+	}
 	if !needInit() {
 		return
 	}

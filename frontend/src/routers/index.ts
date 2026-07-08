@@ -6,6 +6,22 @@ import { AxiosCanceler } from '@/api/helper/axios-cancel';
 const axiosCanceler = new AxiosCanceler();
 
 let isRedirecting = false;
+const shouldPinEnhanceHome = (path: string, activeMenu?: string) => activeMenu === '/enhance' && path === '/enhance';
+
+const resolveValidCachedRoute = (cachedRoute: string, activeMenu?: string) => {
+    if (!cachedRoute || !activeMenu) {
+        return '';
+    }
+    const resolved = router.resolve(cachedRoute);
+    if (!resolved.matched.length) {
+        return '';
+    }
+    const resolvedActiveMenu = resolved.meta.activeMenu as string | undefined;
+    if (resolvedActiveMenu && resolvedActiveMenu !== activeMenu) {
+        return '';
+    }
+    return resolved.path;
+};
 
 router.beforeEach((to, from, next) => {
     NProgress.start();
@@ -37,6 +53,7 @@ router.beforeEach((to, from, next) => {
         return next();
     }
     const activeMenuKey = 'cachedRoute' + (to.meta.activeMenu || '');
+    const pinEnhanceHome = shouldPinEnhanceHome(to.path, to.meta.activeMenu as string | undefined);
     if (to.query.uncached != undefined) {
         const query = { ...to.query };
         delete query.uncached;
@@ -44,9 +61,17 @@ router.beforeEach((to, from, next) => {
         return next({ path: to.path, query });
     }
 
-    const cachedRoute = localStorage.getItem(activeMenuKey);
+    const cachedRoute = resolveValidCachedRoute(
+        localStorage.getItem(activeMenuKey) || '',
+        to.meta.activeMenu as string | undefined,
+    );
+    if (pinEnhanceHome || !cachedRoute) {
+        localStorage.removeItem(activeMenuKey);
+    }
     if (
         to.meta.activeMenu &&
+        !pinEnhanceHome &&
+        to.path === to.meta.activeMenu &&
         to.meta.activeMenu != from.meta.activeMenu &&
         cachedRoute &&
         cachedRoute !== to.path &&
@@ -65,19 +90,23 @@ router.beforeEach((to, from, next) => {
 
 router.afterEach((to) => {
     if (to.meta.activeMenu && !to.meta.ignoreTab && !isRedirecting) {
-        let notMathParam = true;
-        if (to.matched.some((record) => record.path.includes(':'))) {
-            notMathParam = false;
-        }
-        if (notMathParam) {
-            if (to.meta.activeMenu === '/cronjobs' && to.path === '/cronjobs/cronjob/operate') {
-                localStorage.setItem('cachedRoute' + to.meta.activeMenu, '/cronjobs/cronjob');
-            } else if (to.meta.activeMenu === '/containers' && to.path === '/containers/container/operate') {
-                localStorage.setItem('cachedRoute' + to.meta.activeMenu, '/containers/container');
-            } else if (to.meta.activeMenu === '/toolbox' && to.path === '/toolbox/clam/setting') {
-                localStorage.setItem('cachedRoute' + to.meta.activeMenu, '/toolbox/clam');
-            } else {
-                localStorage.setItem('cachedRoute' + to.meta.activeMenu, to.path);
+        if (to.meta.activeMenu === '/enhance') {
+            localStorage.removeItem('cachedRoute' + to.meta.activeMenu);
+        } else {
+            let notMathParam = true;
+            if (to.matched.some((record) => record.path.includes(':'))) {
+                notMathParam = false;
+            }
+            if (notMathParam) {
+                if (to.meta.activeMenu === '/cronjobs' && to.path === '/cronjobs/cronjob/operate') {
+                    localStorage.setItem('cachedRoute' + to.meta.activeMenu, '/cronjobs/cronjob');
+                } else if (to.meta.activeMenu === '/containers' && to.path === '/containers/container/operate') {
+                    localStorage.setItem('cachedRoute' + to.meta.activeMenu, '/containers/container');
+                } else if (to.meta.activeMenu === '/toolbox' && to.path === '/toolbox/clam/setting') {
+                    localStorage.setItem('cachedRoute' + to.meta.activeMenu, '/toolbox/clam');
+                } else {
+                    localStorage.setItem('cachedRoute' + to.meta.activeMenu, to.path);
+                }
             }
         }
     }

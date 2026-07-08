@@ -1,6 +1,7 @@
 <template>
     <router-view v-slot="{ Component, route }" :key="key">
-        <transition appear name="fade-transform" mode="out-in">
+        <component v-if="isEnhanceRoute(route.path)" :is="Component" :key="route.fullPath"></component>
+        <transition v-else appear name="fade-transform" mode="out-in">
             <keep-alive :include="include">
                 <component :is="Component" :key="route.path"></component>
             </keep-alive>
@@ -18,6 +19,7 @@ const key = computed(() => {
 const include = computed(() => {
     return props.keepAlive || cacheRouter;
 });
+const isEnhanceRoute = (path: string) => path.startsWith('/enhance');
 const props = defineProps({
     keepAlive: {
         type: Object,

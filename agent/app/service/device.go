@@ -63,15 +63,13 @@ func (u *DeviceService) LoadBaseInfo() (dto.DeviceBaseInfo, error) {
 		baseInfo.Ntp = ntp.Value
 	}
 
-	swapInfo, err := mem.SwapMemory()
-	if err != nil {
-		return baseInfo, err
-	}
-	baseInfo.SwapMemoryTotal = swapInfo.Total
-	baseInfo.SwapMemoryAvailable = swapInfo.Free
-	baseInfo.SwapMemoryUsed = swapInfo.Used
-	if baseInfo.SwapMemoryTotal != 0 {
-		baseInfo.SwapDetails = loadSwap()
+	if swapInfo, err := mem.SwapMemory(); err == nil {
+		baseInfo.SwapMemoryTotal = swapInfo.Total
+		baseInfo.SwapMemoryAvailable = swapInfo.Free
+		baseInfo.SwapMemoryUsed = swapInfo.Used
+		if baseInfo.SwapMemoryTotal != 0 {
+			baseInfo.SwapDetails = loadSwap()
+		}
 	}
 	disks := loadDiskInfo()
 	for _, item := range disks {

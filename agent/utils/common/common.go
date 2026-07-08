@@ -18,6 +18,7 @@ import (
 
 	"github.com/1Panel-dev/1Panel/agent/buserr"
 	"github.com/1Panel-dev/1Panel/agent/utils/cmd"
+	"github.com/1Panel-dev/1Panel/agent/utils/platform"
 	"github.com/1Panel-dev/1Panel/agent/utils/re"
 	"golang.org/x/net/idna"
 )
@@ -422,20 +423,12 @@ func GetDockerComposeCommand() string {
 }
 
 func LoadParams(param string) string {
-	stdout, err := cmd.RunDefaultWithStdoutBashCf("grep '^%s=' /usr/local/bin/1pctl | cut -d'=' -f2", param)
-	if err != nil {
-		panic(err)
-	}
-	info := strings.ReplaceAll(stdout, "\n", "")
+	info := platform.ReadParam(param)
 	if len(info) == 0 || info == `""` {
 		panic(fmt.Sprintf("error `%s` find in /usr/local/bin/1pctl", param))
 	}
 	return info
 }
 func LoadParamsWithoutPanic(param string) string {
-	stdout, err := cmd.RunDefaultWithStdoutBashCf("grep '^%s=' /usr/local/bin/1pctl | cut -d'=' -f2", param)
-	if err != nil {
-		return ""
-	}
-	return strings.ReplaceAll(stdout, "\n", "")
+	return platform.ReadParam(param)
 }

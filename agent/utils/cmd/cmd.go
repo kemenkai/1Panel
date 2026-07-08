@@ -29,9 +29,6 @@ func SudoHandleCmd() string {
 }
 
 func Which(name string) bool {
-	stdout, err := RunDefaultWithStdoutBashCf("which %s", name)
-	if err != nil || (len(strings.ReplaceAll(stdout, "\n", "")) == 0) {
-		return false
-	}
-	return true
+	_, err := exec.LookPath(name)
+	return err == nil
 }

@@ -13,7 +13,7 @@
                         />
                         <PrimaryLogo v-else />
                     </div>
-                    <h3 class="description">{{ globalStore.themeConfig.title || $t('setting.description') }}</h3>
+                    <h3 class="description">{{ globalStore.themeConfig.title || $t(descriptionKey) }}</h3>
                     <div class="flex justify-center">
                         <SystemUpgrade class="upgrade" />
                     </div>
@@ -43,7 +43,8 @@
 
 <script lang="ts" setup>
 import { getSystemAvailable } from '@/api/modules/setting';
-import { onMounted, ref } from 'vue';
+import { loadOsInfo } from '@/api/modules/dashboard';
+import { computed, onMounted, ref } from 'vue';
 import SystemUpgrade from '@/components/system-upgrade/index.vue';
 import { GlobalStore } from '@/store';
 import PrimaryLogo from '@/assets/images/1panel-logo.svg?component';
@@ -52,6 +53,8 @@ const globalStore = GlobalStore();
 const { docsUrl } = storeToRefs(globalStore);
 const loading = ref();
 const logoLoadFailed = ref(false);
+const isWindows = ref(false);
+const descriptionKey = computed(() => (isWindows.value ? 'setting.descriptionWindows' : 'setting.description'));
 
 const toDoc = () => {
     window.open(docsUrl.value, '_blank', 'noopener,noreferrer');
@@ -66,8 +69,15 @@ const toGithubStar = () => {
     window.open('https://github.com/1Panel-dev/1Panel', '_blank', 'noopener,noreferrer');
 };
 
-onMounted(() => {
+onMounted(async () => {
     getSystemAvailable();
+    try {
+        const res = await loadOsInfo();
+        const osValue = `${res.data.os || ''} ${res.data.platform || ''}`.toLowerCase();
+        isWindows.value = osValue.includes('windows');
+    } catch {
+        isWindows.value = false;
+    }
 });
 </script>
 

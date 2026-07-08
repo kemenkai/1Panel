@@ -1,0 +1,70 @@
+server:
+  port: ${APP_SERVER_PORT:6084}
+
+spring:
+  application:
+    name: ${APP_NAME:app}
+  data:
+    redis:
+      host: ${REDIS_HOST:base-redis}
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+  main:
+    allow-bean-definition-overriding: true
+  autoconfigure:
+    exclude: com.alibaba.druid.spring.boot3.autoconfigure.DruidDataSourceAutoConfigure
+  cloud:
+    nacos:
+      discovery:
+        enabled: false
+      config:
+        enabled: false
+## Mybatis Mate 配置
+mybatis-mate:
+  cert:
+    grant: MM20231007001
+    license: d7JFXDmzDgrTTj9NH9Yccue8j+OJ1xkQQd4hgACZfkyKjpxqckQmePxDk+NUon41wZL+WD/JwsFiesXdw1GBegwwf2VFdMUrQGROCDcflaOITVxAT4pIHTlGX/3z++rlcmx9uomVPSwSaAA8QPTH7E+5kiSRtOU2mTy+h7lwQxeW2msR6w4cONkM8YmDjtLOjDVDp9HzOUYnGSaZBgEGknrmR7Q+QwVSaSJUalcnjnHq1vLFfRX8vxWSTGsXQBjyiXMg2UXEL2N4ed87Py5lXBqcf4oR+5L4i+skjmSL3O0OcvLZGX/RAk/Lyq+b7o/xkoqkfcccBPC4Z20mTHg1HA==
+  sharding:
+    primary: his
+    datasource:
+      his:
+        - key: his1
+          driver-class-name: oracle.jdbc.driver.OracleDriver
+          schema: ${HIS_DB_SCHEMA:bshis}
+          url: jdbc:oracle:thin:@//${HIS_DB_HOST:192.168.5.7}:${HIS_DB_PORT:1521}/${HIS_DB_SERVER_NAME:orcl}
+          username: ${HIS_DB_USER:bshis}
+          password: ${HIS_DB_PASSWORD:bsoft}
+          test-query: select 1 from dual
+          hikari:
+            maxLifetime: 1765000
+            maximumPoolSize: 10
+            minimum-idle: 3
+logging:
+  level:
+    #com.xxl.job: trace
+
+
+# 租户表维护
+pigx:
+  tenant:
+    column: tenant_id
+    tables:
+      - app_user
+      - app_role
+      - app_article
+      - app_article_category
+      - app_article_collect
+      - app_page
+      - app_tabbar
+      - sys_hosp
+      - drg_cost
+      - drg_group
+      - jhxyf_qyjl
+xxl:
+  job:
+    admin:
+      addresses: ${XXL_JOB_ADMIN_ADDRESSES:http://127.0.0.1:9080/xxl-job-admin}
+    executor:
+      access-token: "3awHVHcCumvDN3nRFqNVkHnnsaKocdJ688gwdmgFTkaLUMEHn5qGJrfs6QCS3uxaPATkr2dmycExV4A9VAGN7PEUJ4Gy9VMVicYNhfTmweHjkKYoNhb28FjM3Fa4veC7"

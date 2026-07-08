@@ -17,6 +17,7 @@ import (
 
 	"github.com/1Panel-dev/1Panel/core/global"
 	"github.com/1Panel-dev/1Panel/core/utils/cmd"
+	"github.com/1Panel-dev/1Panel/core/utils/platform"
 )
 
 var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890")
@@ -245,22 +246,14 @@ func HandleIPList(content string) ([]string, error) {
 }
 
 func LoadParams(param string) string {
-	stdout, err := cmd.RunDefaultWithStdoutBashCf("grep '^%s=' /usr/local/bin/1pctl | cut -d'=' -f2", param)
-	if err != nil {
-		panic(err)
-	}
-	info := strings.ReplaceAll(stdout, "\n", "")
+	info := platform.ReadParam(param)
 	if len(info) == 0 || info == `""` {
 		panic(fmt.Sprintf("error `%s` find in /usr/local/bin/1pctl", param))
 	}
 	return info
 }
 func LoadParamsWithoutPanic(param string) string {
-	stdout, err := cmd.RunDefaultWithStdoutBashCf("grep '^%s=' /usr/local/bin/1pctl | cut -d'=' -f2", param)
-	if err != nil {
-		return ""
-	}
-	return strings.ReplaceAll(stdout, "\n", "")
+	return platform.ReadParam(param)
 }
 
 func GetRealClientIP(c *gin.Context) string {

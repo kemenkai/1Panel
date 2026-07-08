@@ -42,7 +42,7 @@
 
         <el-row :gutter="7" class="card-interval">
             <el-col :xs="24" :sm="24" :md="16" :lg="16" :xl="16">
-                <CardWithHeader :header="$t('menu.home')" height="166px">
+                <CardWithHeader v-if="!isWindowsLitePanel" :header="$t('menu.home')" height="166px">
                     <template #header-r>
                         <el-button class="h-button-setting" @click="quickJumpRef.acceptParams()" link icon="Setting" />
                     </template>
@@ -76,7 +76,7 @@
                 <CardWithHeader
                     :header="$t('menu.monitor')"
                     class="card-interval chart-card"
-                    v-loading="!chartsOption['networkChart']"
+                    v-loading="chartOption === 'io' ? !chartsOption['ioChart'] : !chartsOption['networkChart']"
                     @mouseenter="refreshOptionsOnHover"
                 >
                     <template #header-r>
@@ -410,12 +410,12 @@
                     </el-carousel-item>
                 </el-carousel>
 
-                <AppLauncher ref="appRef" class="card-interval" />
+                <AppLauncher v-if="!isWindowsLitePanel" ref="appRef" class="card-interval" />
             </el-col>
         </el-row>
 
         <LicenseImport ref="licenseRef" />
-        <QuickJump @search="onLoadBaseInfo(false, 'all')" ref="quickJumpRef" />
+        <QuickJump v-if="!isWindowsLitePanel" @search="onLoadBaseInfo(false, 'all')" ref="quickJumpRef" />
 
         <DialogPro v-model="welcomeOpen" size="w-70" id="welcomeDialog">
             <div ref="shadowContainer" />
@@ -519,6 +519,12 @@ const simpleNodeCarouselSetting = ref();
 const carouselSettingReady = ref(false);
 
 const showMemoCarousel = computed(() => memoCarouselSetting.value === 'Enable');
+const isWindowsLitePanel = computed(() => {
+    const osValue = baseInfo.value.os.toLowerCase();
+    const platformValue = baseInfo.value.platform.toLowerCase();
+    const familyValue = baseInfo.value.platformFamily.toLowerCase();
+    return osValue.includes('windows') || platformValue.includes('windows') || familyValue.includes('windows');
+});
 const carouselItemCount = computed(() => {
     let count = 1;
     if (showMemoCarousel.value) count += 1;
@@ -604,7 +610,7 @@ const currentChartInfo = reactive({
 });
 const skipNextCurrentInfoDelta = ref(false);
 
-const chartsOption = ref({ ioChart1: null, networkChart: null });
+const chartsOption = ref({ ioChart: null, networkChart: null });
 
 const updateCurrentInfo = (data: Dashboard.CurrentInfo) => {
     currentInfo.value = {
@@ -687,14 +693,20 @@ const onLoadBaseInfo = async (isInit: boolean, range: string) => {
         netBytesRecvs.value = [];
         timeNetDatas.value = [];
     }
-    const res = await loadBaseInfo(searchInfo.ioOption, searchInfo.netOption);
-    baseInfo.value = res.data;
-    updateCurrentInfo(baseInfo.value.currentInfo);
-    skipNextCurrentInfoDelta.value = true;
-    onLoadCurrentInfo();
-    isStatusInit.value = false;
-    statusRef.value?.acceptParams(currentInfo.value, baseInfo.value);
-    appRef.value?.acceptParams();
+    try {
+        const res = await loadBaseInfo(searchInfo.ioOption, searchInfo.netOption);
+        baseInfo.value = res.data;
+        updateCurrentInfo(baseInfo.value.currentInfo);
+        skipNextCurrentInfoDelta.value = true;
+        onLoadCurrentInfo();
+        isStatusInit.value = false;
+        statusRef.value?.acceptParams(currentInfo.value, baseInfo.value);
+        appRef.value?.acceptParams();
+        loadData();
+    } catch {
+        isStatusInit.value = false;
+        loadData();
+    }
     if (isInit) {
         clearTimer();
         timer = setInterval(async () => {
@@ -748,7 +760,13 @@ const jumpPanel = (row: any) => {
 };
 
 const onLoadCurrentInfo = async () => {
-    const res = await loadCurrentInfo(searchInfo.ioOption, searchInfo.netOption);
+    let res;
+    try {
+        res = await loadCurrentInfo(searchInfo.ioOption, searchInfo.netOption);
+    } catch {
+        loadData();
+        return;
+    }
     if (skipNextCurrentInfoDelta.value) {
         skipNextCurrentInfoDelta.value = false;
         currentChartInfo.netBytesSent = 0;

@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/1Panel-dev/1Panel/agent/utils/xpack"
@@ -1657,10 +1656,9 @@ func handleDefaultOwn(dir string) {
 	if err != nil {
 		return
 	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	uid, gid := -1, -1
-	if ok {
-		uid, gid = int(stat.Uid), int(stat.Gid)
+	uid, gid, ok := files.GetFileOwnerIDs(info)
+	if !ok {
+		uid, gid = -1, -1
 	}
 	_ = os.Chown(dir, uid, gid)
 }

@@ -24,8 +24,10 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/utils/common"
 	"github.com/1Panel-dev/1Panel/agent/utils/controller"
 	"github.com/1Panel-dev/1Panel/agent/utils/copier"
+	"github.com/1Panel-dev/1Panel/agent/utils/platform"
 	"github.com/1Panel-dev/1Panel/agent/utils/psutil"
 	"github.com/gin-gonic/gin"
+	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/shirou/gopsutil/v4/load"
 	"github.com/shirou/gopsutil/v4/mem"
@@ -79,16 +81,18 @@ func (u *DashboardService) Restart(operation string) error {
 
 func (u *DashboardService) LoadOsInfo() (*dto.OsInfo, error) {
 	var baseInfo dto.OsInfo
-	hostInfo, err := psutil.HOST.GetHostInfo(false)
-	if err != nil {
-		return nil, err
+	if hostInfo, err := psutil.HOST.GetHostInfo(false); err == nil {
+		baseInfo.OS = hostInfo.OS
+		baseInfo.Platform = hostInfo.Platform
+		baseInfo.PlatformFamily = hostInfo.PlatformFamily
+		baseInfo.KernelArch = hostInfo.KernelArch
+		baseInfo.KernelVersion = hostInfo.KernelVersion
+		baseInfo.PrettyDistro = psutil.HOST.GetDistro()
+	} else {
+		// still report the build platform so callers can tell Windows from Linux
+		baseInfo.OS = platform.Current()
+		baseInfo.Platform = platform.Current()
 	}
-	baseInfo.OS = hostInfo.OS
-	baseInfo.Platform = hostInfo.Platform
-	baseInfo.PlatformFamily = hostInfo.PlatformFamily
-	baseInfo.KernelArch = hostInfo.KernelArch
-	baseInfo.KernelVersion = hostInfo.KernelVersion
-	baseInfo.PrettyDistro = psutil.HOST.GetDistro()
 
 	diskInfo, err := psutil.DISK.GetUsage(global.Dir.BaseDir, false)
 	if err == nil {
@@ -120,22 +124,26 @@ func (u *DashboardService) LoadCurrentInfoForNode() *dto.NodeCurrent {
 	currentInfo.CPUDetailedPercent = cpuDetailedPercent
 
 	loadInfo, _ := load.Avg()
-	currentInfo.Load1 = loadInfo.Load1
-	currentInfo.Load5 = loadInfo.Load5
-	currentInfo.Load15 = loadInfo.Load15
-	currentInfo.LoadUsagePercent = loadInfo.Load1 / (float64(currentInfo.CPUTotal*2) * 0.75) * 100
+	loadTarget := dashboardLoadInfoTarget{cpuTotal: currentInfo.CPUTotal}
+	applyLoadInfo(&loadTarget, loadInfo)
+	currentInfo.Load1 = loadTarget.load1
+	currentInfo.Load5 = loadTarget.load5
+	currentInfo.Load15 = loadTarget.load15
+	currentInfo.LoadUsagePercent = loadTarget.loadUsagePercent
 
-	memoryInfo, _ := mem.VirtualMemory()
-	currentInfo.MemoryTotal = memoryInfo.Total
-	currentInfo.MemoryAvailable = memoryInfo.Available
-	currentInfo.MemoryUsed = memoryInfo.Used
-	currentInfo.MemoryUsedPercent = memoryInfo.UsedPercent
+	if memoryInfo, err := mem.VirtualMemory(); err == nil {
+		currentInfo.MemoryTotal = memoryInfo.Total
+		currentInfo.MemoryAvailable = memoryInfo.Available
+		currentInfo.MemoryUsed = memoryInfo.Used
+		currentInfo.MemoryUsedPercent = memoryInfo.UsedPercent
+	}
 
-	swapInfo, _ := mem.SwapMemory()
-	currentInfo.SwapMemoryTotal = swapInfo.Total
-	currentInfo.SwapMemoryAvailable = swapInfo.Free
-	currentInfo.SwapMemoryUsed = swapInfo.Used
-	currentInfo.SwapMemoryUsedPercent = swapInfo.UsedPercent
+	if swapInfo, err := mem.SwapMemory(); err == nil {
+		currentInfo.SwapMemoryTotal = swapInfo.Total
+		currentInfo.SwapMemoryAvailable = swapInfo.Free
+		currentInfo.SwapMemoryUsed = swapInfo.Used
+		currentInfo.SwapMemoryUsedPercent = swapInfo.UsedPercent
+	}
 
 	return &currentInfo
 }
@@ -165,27 +173,57 @@ func (u *DashboardService) LoadBaseInfo(ioOption string, netOption string) (*dto
 		baseInfo.SystemProxy = proxy
 	}
 
-	loadQuickJump(&baseInfo)
+	if platform.Current() != platform.OSWindows {
+		loadQuickJump(&baseInfo)
+	}
 
 	cpuInfo, err := psutil.CPUInfo.GetCPUInfo(false)
-	if err == nil && len(cpuInfo) > 0 {
-		baseInfo.CPUModelName = cpuInfo[0].ModelName
+	if err == nil {
+		applyCPUInfo(&baseInfo, cpuInfo)
 	}
 
 	baseInfo.CPUCores, _ = psutil.CPUInfo.GetPhysicalCores(false)
 	baseInfo.CPULogicalCores, _ = psutil.CPUInfo.GetLogicalCores(false)
-	baseInfo.CPUMhz = cpuInfo[0].Mhz
 
 	baseInfo.CurrentInfo = *u.LoadCurrentInfo(ioOption, netOption)
 	return &baseInfo, nil
 }
 
+func applyCPUInfo(baseInfo *dto.DashboardBase, cpuInfo []cpu.InfoStat) {
+	if baseInfo == nil || len(cpuInfo) == 0 {
+		return
+	}
+	baseInfo.CPUModelName = cpuInfo[0].ModelName
+	baseInfo.CPUMhz = cpuInfo[0].Mhz
+}
+
+type dashboardLoadInfoTarget struct {
+	cpuTotal         int
+	load1            float64
+	load5            float64
+	load15           float64
+	loadUsagePercent float64
+}
+
+func applyLoadInfo(target *dashboardLoadInfoTarget, loadInfo *load.AvgStat) {
+	if target == nil || loadInfo == nil {
+		return
+	}
+	target.load1 = loadInfo.Load1
+	target.load5 = loadInfo.Load5
+	target.load15 = loadInfo.Load15
+	if target.cpuTotal > 0 {
+		target.loadUsagePercent = loadInfo.Load1 / (float64(target.cpuTotal*2) * 0.75) * 100
+	}
+}
+
 func (u *DashboardService) LoadCurrentInfo(ioOption string, netOption string) *dto.DashboardCurrent {
 	var currentInfo dto.DashboardCurrent
-	hostInfo, _ := psutil.HOST.GetHostInfo(false)
-	currentInfo.Uptime = hostInfo.Uptime
-	currentInfo.TimeSinceUptime = time.Unix(int64(hostInfo.BootTime), 0).Format(constant.DateTimeLayout)
-	currentInfo.Procs = hostInfo.Procs
+	if hostInfo, err := psutil.HOST.GetHostInfo(false); err == nil {
+		currentInfo.Uptime = hostInfo.Uptime
+		currentInfo.TimeSinceUptime = time.Unix(int64(hostInfo.BootTime), 0).Format(constant.DateTimeLayout)
+		currentInfo.Procs = hostInfo.Procs
+	}
 	currentInfo.CPUTotal, _ = psutil.CPUInfo.GetLogicalCores(false)
 
 	cpuUsedPercent, perCore, cpuDetailedPercent := psutil.CPU.GetCPUUsage()
@@ -200,25 +238,29 @@ func (u *DashboardService) LoadCurrentInfo(ioOption string, netOption string) *d
 	currentInfo.CPUDetailedPercent = cpuDetailedPercent
 
 	loadInfo, _ := load.Avg()
-	currentInfo.Load1 = loadInfo.Load1
-	currentInfo.Load5 = loadInfo.Load5
-	currentInfo.Load15 = loadInfo.Load15
-	currentInfo.LoadUsagePercent = loadInfo.Load1 / (float64(currentInfo.CPUTotal*2) * 0.75) * 100
+	loadTarget := dashboardLoadInfoTarget{cpuTotal: currentInfo.CPUTotal}
+	applyLoadInfo(&loadTarget, loadInfo)
+	currentInfo.Load1 = loadTarget.load1
+	currentInfo.Load5 = loadTarget.load5
+	currentInfo.Load15 = loadTarget.load15
+	currentInfo.LoadUsagePercent = loadTarget.loadUsagePercent
 
-	memoryInfo, _ := mem.VirtualMemory()
-	currentInfo.MemoryTotal = memoryInfo.Total
-	currentInfo.MemoryUsed = memoryInfo.Used
-	currentInfo.MemoryFree = memoryInfo.Free
-	currentInfo.MemoryCache = memoryInfo.Cached + memoryInfo.Buffers
-	currentInfo.MemoryShard = memoryInfo.Shared
-	currentInfo.MemoryAvailable = memoryInfo.Available
-	currentInfo.MemoryUsedPercent = memoryInfo.UsedPercent
+	if memoryInfo, err := mem.VirtualMemory(); err == nil {
+		currentInfo.MemoryTotal = memoryInfo.Total
+		currentInfo.MemoryUsed = memoryInfo.Used
+		currentInfo.MemoryFree = memoryInfo.Free
+		currentInfo.MemoryCache = memoryInfo.Cached + memoryInfo.Buffers
+		currentInfo.MemoryShard = memoryInfo.Shared
+		currentInfo.MemoryAvailable = memoryInfo.Available
+		currentInfo.MemoryUsedPercent = memoryInfo.UsedPercent
+	}
 
-	swapInfo, _ := mem.SwapMemory()
-	currentInfo.SwapMemoryTotal = swapInfo.Total
-	currentInfo.SwapMemoryAvailable = swapInfo.Free
-	currentInfo.SwapMemoryUsed = swapInfo.Used
-	currentInfo.SwapMemoryUsedPercent = swapInfo.UsedPercent
+	if swapInfo, err := mem.SwapMemory(); err == nil {
+		currentInfo.SwapMemoryTotal = swapInfo.Total
+		currentInfo.SwapMemoryAvailable = swapInfo.Free
+		currentInfo.SwapMemoryUsed = swapInfo.Used
+		currentInfo.SwapMemoryUsedPercent = swapInfo.UsedPercent
+	}
 
 	currentInfo.DiskData = loadDiskInfo()
 	currentInfo.GPUData = loadGPUInfo()
@@ -274,7 +316,10 @@ func (u *DashboardService) LoadTopMem() []dto.Process {
 }
 
 func (u *DashboardService) LoadAppLauncher(ctx *gin.Context) ([]dto.AppLauncher, error) {
-	var data []dto.AppLauncher
+	data := make([]dto.AppLauncher, 0)
+	if platform.Current() == platform.OSWindows {
+		return data, nil
+	}
 	appInstalls, err := appInstallRepo.ListBy(context.Background())
 	if err != nil {
 		return data, err
@@ -354,6 +399,9 @@ func (u *DashboardService) ChangeShow(req dto.SettingUpdate) error {
 }
 
 func (u *DashboardService) LoadQuickOptions() []dto.QuickJump {
+	if platform.Current() == platform.OSWindows {
+		return nil
+	}
 	quicks := launcherRepo.ListQuickJump(true)
 	var list []dto.QuickJump
 	for _, quick := range quicks {
@@ -427,6 +475,16 @@ type diskInfo struct {
 }
 
 func loadDiskInfo() []dto.DiskInfo {
+	if platform.Current() == platform.OSWindows {
+		partitions, err := disk.Partitions(false)
+		if err != nil {
+			return nil
+		}
+		return buildDiskInfoFromPartitions(partitions, func(path string) (*disk.UsageStat, error) {
+			return psutil.DISK.GetUsage(path, false)
+		})
+	}
+
 	var datas []dto.DiskInfo
 	cmdMgr := cmd.NewCommandMgr(cmd.WithTimeout(2 * time.Second))
 	format := `awk 'NR>1 && !/tmpfs|snap\/core|udev/ {printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", $1, $2, $3, $4, $5, $6, $7}'`
@@ -530,6 +588,48 @@ func loadDiskInfo() []dto.DiskInfo {
 		return datas[i].Path < datas[j].Path
 	})
 	return datas
+}
+
+func buildDiskInfoFromPartitions(partitions []disk.PartitionStat, loadUsage func(string) (*disk.UsageStat, error)) []dto.DiskInfo {
+	datas := make([]dto.DiskInfo, 0, len(partitions))
+	for _, partition := range partitions {
+		if shouldSkipDiskPartition(partition) {
+			continue
+		}
+		itemData := dto.DiskInfo{
+			Path:   partition.Mountpoint,
+			Type:   partition.Fstype,
+			Device: partition.Device,
+		}
+		if loadUsage != nil {
+			if state, err := loadUsage(partition.Mountpoint); err == nil && state != nil {
+				itemData.Total = state.Total
+				itemData.Free = state.Free
+				itemData.Used = state.Used
+				itemData.UsedPercent = state.UsedPercent
+				itemData.InodesTotal = state.InodesTotal
+				itemData.InodesUsed = state.InodesUsed
+				itemData.InodesFree = state.InodesFree
+				itemData.InodesUsedPercent = state.InodesUsedPercent
+			}
+		}
+		datas = append(datas, itemData)
+	}
+	sort.Slice(datas, func(i, j int) bool {
+		return datas[i].Path < datas[j].Path
+	})
+	return datas
+}
+
+func shouldSkipDiskPartition(partition disk.PartitionStat) bool {
+	if strings.TrimSpace(partition.Mountpoint) == "" {
+		return true
+	}
+	fsType := strings.ToLower(strings.TrimSpace(partition.Fstype))
+	if fsType == "cdfs" || fsType == "udf" {
+		return true
+	}
+	return false
 }
 
 func loadGPUInfo() []dto.GPUInfo {

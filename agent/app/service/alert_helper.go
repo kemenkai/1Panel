@@ -394,6 +394,10 @@ func loadLoadInfo(alert dto.AlertDTO) {
 	}
 	var loadValue float64
 	CPUTotal, _ := psutil.CPUInfo.GetLogicalCores(false)
+	if CPUTotal <= 0 {
+		global.LOG.Errorf("error getting logical cores for load alert, count: %d", CPUTotal)
+		return
+	}
 	switch alert.Cycle {
 	case 1:
 		loadValue = avgStat.Load1 / (float64(CPUTotal*2) * 0.75) * 100

@@ -357,6 +357,15 @@ export namespace App {
         imagePrefix: string;
     }
 
+    export interface LocalAppPackagePreview {
+        apps: string[];
+        existingApps: string[];
+    }
+
+    export interface LocalAppPackageUpload extends LocalAppPackagePreview {
+        taskID: string;
+    }
+
     export interface InstallAppToNodes extends AppInstall {
         nodes: string[];
         appKey: string;

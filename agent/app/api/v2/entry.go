@@ -81,4 +81,6 @@ var (
 	alertService     = service.NewIAlertService()
 
 	diskService = service.NewIDiskService()
+
+	windowsServiceService = service.NewIWindowsServiceService()
 )

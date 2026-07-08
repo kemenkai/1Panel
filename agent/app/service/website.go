@@ -12,7 +12,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/1Panel-dev/1Panel/agent/utils/docker"
@@ -1953,8 +1952,10 @@ func (w WebsiteService) LoadWebsiteDirConfig(req request.WebsiteCommonReq) (*res
 	if err != nil {
 		return nil, err
 	}
-	res.User = strconv.FormatUint(uint64(info.Sys().(*syscall.Stat_t).Uid), 10)
-	res.UserGroup = strconv.FormatUint(uint64(info.Sys().(*syscall.Stat_t).Gid), 10)
+	if uid, gid, ok := files.GetFileOwnerIDs(info); ok {
+		res.User = strconv.Itoa(uid)
+		res.UserGroup = strconv.Itoa(gid)
+	}
 
 	indexFiles, err := os.ReadDir(absoluteIndexPath)
 	if err != nil {
@@ -1970,8 +1971,8 @@ func (w WebsiteService) LoadWebsiteDirConfig(req request.WebsiteCommonReq) (*res
 			res.Dirs = append(res.Dirs, "/"+strings.TrimPrefix(nextRelPath, "/"))
 			entryInfo, _ := entry.Info()
 			if entryInfo != nil {
-				if stat, ok := entryInfo.Sys().(*syscall.Stat_t); ok {
-					if stat.Uid != 1000 || stat.Gid != 1000 {
+				if uid, gid, ok := files.GetFileOwnerIDs(entryInfo); ok {
+					if uid != 1000 || gid != 1000 {
 						res.Msg = i18n.GetMsgByKey("ErrPathPermission")
 					}
 				}

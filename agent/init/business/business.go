@@ -7,6 +7,7 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/constant"
 	"github.com/1Panel-dev/1Panel/agent/global"
 	"github.com/1Panel-dev/1Panel/agent/utils/common"
+	"github.com/1Panel-dev/1Panel/agent/utils/platform"
 )
 
 func Init() {
@@ -81,6 +82,9 @@ func initAcmeAccount() {
 }
 
 func checkDockerCompose() {
+	if platform.Current() == platform.OSWindows {
+		return
+	}
 	dockerComposeCmd := common.GetDockerComposeCommand()
 	if dockerComposeCmd == "" {
 		global.LOG.Errorf("Docker Compose command not found, please install Docker Compose Plugin")

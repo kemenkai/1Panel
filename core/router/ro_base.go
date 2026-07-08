@@ -2,6 +2,7 @@ package router
 
 import (
 	v2 "github.com/1Panel-dev/1Panel/core/app/api/v2"
+	"github.com/1Panel-dev/1Panel/core/extensions/enhance"
 	"github.com/gin-gonic/gin"
 )
 
@@ -12,6 +13,7 @@ func (s *BaseRouter) InitRouter(Router *gin.RouterGroup) {
 	baseApi := v2.ApiGroupApp.BaseApi
 	{
 		baseRouter.GET("/captcha", baseApi.Captcha)
+		enhance.RegisterAuthRoutes(baseRouter, baseApi.SimpleNodeLogin)
 		baseRouter.POST("/passkey/begin", baseApi.PasskeyBeginLogin)
 		baseRouter.POST("/passkey/finish", baseApi.PasskeyFinishLogin)
 		baseRouter.POST("/mfalogin", baseApi.MFALogin)

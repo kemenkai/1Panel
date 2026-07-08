@@ -22,6 +22,7 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/utils/copier"
 	"github.com/1Panel-dev/1Panel/agent/utils/encrypt"
 	"github.com/1Panel-dev/1Panel/agent/utils/firewall"
+	"github.com/1Panel-dev/1Panel/agent/utils/platform"
 	"github.com/1Panel-dev/1Panel/agent/utils/ssh"
 	"github.com/1Panel-dev/1Panel/agent/utils/xpack"
 
@@ -53,6 +54,7 @@ var AddTable = &gormigrate.Migration{
 			&model.DatabasePostgresql{},
 			&model.Favorite{},
 			&model.FileShare{},
+			&model.WindowsService{},
 			&model.Firewall{},
 			&model.Host{},
 			&model.Ftp{},
@@ -125,7 +127,7 @@ var InitSetting = &gormigrate.Migration{
 		if err := tx.Create(&model.Setting{Key: "EncryptKey", Value: global.CONF.Base.EncryptKey}).Error; err != nil {
 			return err
 		}
-		if err := tx.Create(&model.Setting{Key: "DockerSockPath", Value: "unix:///var/run/docker.sock"}).Error; err != nil {
+		if err := tx.Create(&model.Setting{Key: "DockerSockPath", Value: platform.DefaultDockerHost()}).Error; err != nil {
 			return err
 		}
 		if err := tx.Create(&model.Setting{Key: "SystemStatus", Value: "Free"}).Error; err != nil {
@@ -1258,5 +1260,42 @@ var AddFileHistoryTable = &gormigrate.Migration{
 			}
 		}
 		return nil
+	},
+}
+
+var UpdateWindowsDockerDefaults = &gormigrate.Migration{
+	ID: "20260430-update-windows-docker-defaults",
+	Migrate: func(tx *gorm.DB) error {
+		if platform.Current() != platform.OSWindows {
+			return nil
+		}
+
+		var setting model.Setting
+		if err := tx.Where("key = ?", "DockerSockPath").First(&setting).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return tx.Create(&model.Setting{Key: "DockerSockPath", Value: platform.DefaultDockerHost()}).Error
+			}
+			return err
+		}
+
+		value := strings.TrimSpace(setting.Value)
+		if value == "" || value == "unix:///var/run/docker.sock" {
+			return tx.Model(&model.Setting{}).
+				Where("key = ?", "DockerSockPath").
+				Update("value", platform.DefaultDockerHost()).Error
+		}
+		return nil
+	},
+}
+
+var AddWindowsServiceTable = &gormigrate.Migration{
+	ID: "20260506-add-windows-service-table",
+	Migrate: func(tx *gorm.DB) error {
+		if err := tx.AutoMigrate(&model.WindowsService{}); err != nil {
+			return err
+		}
+		return tx.Model(&model.WindowsService{}).
+			Where("register_service = ? OR register_service IS NULL", false).
+			Update("register_service", true).Error
 	},
 }

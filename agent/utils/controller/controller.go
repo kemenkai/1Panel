@@ -9,6 +9,7 @@ import (
 
 	"github.com/1Panel-dev/1Panel/agent/global"
 	"github.com/1Panel-dev/1Panel/agent/utils/controller/manager"
+	"github.com/1Panel-dev/1Panel/agent/utils/platform"
 )
 
 type Controller interface {
@@ -24,6 +25,9 @@ type Controller interface {
 }
 
 func New() (Controller, error) {
+	if platform.Current() == platform.OSWindows {
+		return manager.NewWindows(), nil
+	}
 	managerOptions := []string{"systemctl", "rc-service", "service"}
 	for _, item := range managerOptions {
 		if _, err := exec.LookPath(item); err != nil {
@@ -183,9 +187,9 @@ func loadFromPredefined(mgr Controller, keyword string) string {
 		"fail2ban":     {"fail2ban.service", "fail2ban"},
 		"supervisor":   {"supervisord.service", "supervisor.service", "supervisord", "supervisor"},
 		"ssh":          {"sshd.service", "ssh.service", "sshd", "ssh"},
-		"1panel-core":  {"1panel-core.service"},
-		"1panel-agent": {"1panel-agent.service"},
-		"docker":       {"docker.service", "dockerd"},
+		"1panel-core":  {"1panel-core.service", "1panel-core-service"},
+		"1panel-agent": {"1panel-agent.service", "1panel-agent-service"},
+		"docker":       {"docker.service", "dockerd", "docker", "com.docker.service"},
 		"iptables":     {"iptables", "iptables-services"},
 	}
 	if val, ok := predefinedMap[keyword]; ok {

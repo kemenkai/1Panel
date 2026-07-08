@@ -1,0 +1,168 @@
+# app: 应用基础信息
+app:
+  # key: 1Panel 应用唯一标识，建议使用小写英文和中划线
+  key: sample-java-service
+  # name: 1Panel 页面中显示的应用名称
+  name: Sample Java Service
+  # version: 应用版本目录名称，也会用于生成压缩包名
+  version: 1.0.0
+  # type: 1Panel 应用类型，普通业务应用保持 app 即可
+  type: app
+  # tags: 应用标签，会显示在 1Panel 应用商店筛选中
+  tags:
+    # - custom: 自定义应用标签示例
+    - custom
+    # - java: Java 应用标签示例
+    - java
+  # descZh: 中文描述，会写入应用元数据
+  descZh: 示例 Java 服务应用包
+  # descEn: 英文描述，会写入应用元数据
+  descEn: Sample Java service package
+  # memoryRequired: 应用推荐最低内存，单位 MB
+  memoryRequired: 512
+  # archive: 是否额外生成 tar.gz 安装包，true 表示生成
+  archive: true
+
+# backend: 后端 Java 服务配置
+backend:
+  # jar: 后端 jar 文件路径，支持相对 spec 文件的相对路径
+  jar: ./sample-java-service.jar
+  # serverName: 复制到应用包后的 jar 文件名，不带 .jar 后缀
+  serverName: sample-java-service
+  # internalPort: 容器内部 Java 服务监听端口
+  internalPort: 8080
+  # hostPort: 1Panel 安装表单里的默认对外端口
+  hostPort: 18080
+  # javaImage: 默认 Java 基础镜像
+  javaImage: alibaba_dragonwell_jdk_anolis:21
+  # timezone: 容器时区
+  timezone: Asia/Shanghai
+  # javaOpts: JAVA_OPS 环境变量内容
+  javaOpts: -Xms512m -Xmx512m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=utf-8
+  # applicationOps: 追加给 java -jar 的启动参数
+  applicationOps: --spring.profiles.active=prod
+  # configFile: 需要挂载到容器内的配置文件路径
+  configFile: ./application-prod.yml
+  # configTarget: 配置文件挂载到容器里的目标路径
+  configTarget: /app/application-prod.yml
+
+# web: 可选的前端静态资源配置；如果没有前端页面，这一段可以删除
+web:
+  # dist: 前端构建产物目录，支持相对 spec 文件的相对路径
+  dist: ./dist
+  # routePrefix: Nginx 对外访问路径前缀
+  routePrefix: /sample
+  # apiPrefix: 需要反向代理到后端或网关的 API 路径前缀
+  apiPrefix: /sample/api/
+  # apiProxyPass: Nginx proxy_pass 目标地址
+  apiProxyPass: http://base-gateway:9999/sample/
+  # rootName: 前端静态资源挂载到 nginx 内的目录名
+  rootName: sample-ui
+
+# env: 环境变量配置
+env:
+  # editable: 会出现在 1Panel 安装表单中，可由运维修改
+  editable:
+    # MYSQL_HOST: MySQL 主机地址
+    MYSQL_HOST: base-mysql
+    # MYSQL_PORT: MySQL 端口
+    MYSQL_PORT: 3306
+    # MYSQL_USER: MySQL 用户名
+    MYSQL_USER: root
+    # MYSQL_PWD: MySQL 密码
+    MYSQL_PWD: Password123@mysql
+    # REDIS_HOST: Redis 主机地址
+    REDIS_HOST: base-redis
+    # REDIS_PORT: Redis 端口
+    REDIS_PORT: 6379
+    # REDIS_PASSWORD: Redis 密码
+    REDIS_PASSWORD: Password123@redis
+    # NACOS_HOST: Nacos 主机地址
+    NACOS_HOST: base-register
+    # NACOS_PORT: Nacos 端口
+    NACOS_PORT: 8848
+  # fixed: 不展示在表单里，直接写入 .env 的固定变量
+  fixed:
+    # SPRING_PROFILES_ACTIVE: 固定使用 prod 配置
+    SPRING_PROFILES_ACTIVE: prod
+
+# form: 对 editable 中字段的表单展示进行覆盖；如果不写，会自动按 envKey 猜测
+form:
+  # MYSQL_HOST: 覆盖 MYSQL_HOST 表单显示配置
+  MYSQL_HOST:
+    # labelZh: 中文标签
+    labelZh: MySQL 主机
+    # labelEn: 英文标签
+    labelEn: MySQL host
+    # type: 表单类型，支持 text / number / password
+    type: text
+  # MYSQL_PORT: 覆盖 MYSQL_PORT 表单显示配置
+  MYSQL_PORT:
+    # labelZh: 中文标签
+    labelZh: MySQL 端口
+    # labelEn: 英文标签
+    labelEn: MySQL port
+    # type: number 表示数字输入框
+    type: number
+    # rule: 使用 1Panel 现有表单校验规则，这里用 port
+    rule: port
+  # MYSQL_USER: 覆盖 MYSQL_USER 表单显示配置
+  MYSQL_USER:
+    # labelZh: 中文标签
+    labelZh: MySQL 用户名
+    # labelEn: 英文标签
+    labelEn: MySQL username
+    # type: text 表示普通文本输入框
+    type: text
+  # MYSQL_PWD: 覆盖 MYSQL_PWD 表单显示配置
+  MYSQL_PWD:
+    # labelZh: 中文标签
+    labelZh: MySQL 密码
+    # labelEn: 英文标签
+    labelEn: MySQL password
+    # type: password 表示密码输入框
+    type: password
+  # REDIS_HOST: 覆盖 REDIS_HOST 表单显示配置
+  REDIS_HOST:
+    # labelZh: 中文标签
+    labelZh: Redis 主机
+    # labelEn: 英文标签
+    labelEn: Redis host
+    # type: text 表示普通文本输入框
+    type: text
+  # REDIS_PORT: 覆盖 REDIS_PORT 表单显示配置
+  REDIS_PORT:
+    # labelZh: 中文标签
+    labelZh: Redis 端口
+    # labelEn: 英文标签
+    labelEn: Redis port
+    # type: number 表示数字输入框
+    type: number
+    # rule: 端口校验规则
+    rule: port
+  # REDIS_PASSWORD: 覆盖 REDIS_PASSWORD 表单显示配置
+  REDIS_PASSWORD:
+    # labelZh: 中文标签
+    labelZh: Redis 密码
+    # labelEn: 英文标签
+    labelEn: Redis password
+    # type: password 表示密码输入框
+    type: password
+  # NACOS_HOST: 覆盖 NACOS_HOST 表单显示配置
+  NACOS_HOST:
+    # labelZh: 中文标签
+    labelZh: Nacos 主机
+    # labelEn: 英文标签
+    labelEn: Nacos host
+    # type: text 表示普通文本输入框
+    type: text
+  # NACOS_PORT: 覆盖 NACOS_PORT 表单显示配置
+  NACOS_PORT:
+    # labelZh: 中文标签
+    labelZh: Nacos 端口
+    # labelEn: 英文标签
+    labelEn: Nacos port
+    # type: number 表示数字输入框
+    type: number
+    # rule: 端口校验规则
+    rule: port

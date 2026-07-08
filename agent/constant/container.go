@@ -1,5 +1,7 @@
 package constant
 
+import "github.com/1Panel-dev/1Panel/agent/utils/platform"
+
 const (
 	ContainerOpStart   = "start"
 	ContainerOpStop    = "stop"
@@ -15,4 +17,4 @@ const (
 	ComposeOpRemove  = "remove"
 )
 
-var DaemonJsonPath = "/etc/docker/daemon.json"
+var DaemonJsonPath = platform.DefaultDockerDaemonConfigPath()

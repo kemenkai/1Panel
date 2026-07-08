@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/1Panel-dev/1Panel/agent/app/dto"
@@ -402,7 +401,7 @@ func runOllamaPullWithProcess(taskItem *task.Task, containerName, modelName stri
 	defer cancel()
 
 	cmdItem := exec.CommandContext(ctx, "docker", "exec", containerName, "ollama", "pull", modelName)
-	cmdItem.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	configureLongRunningCommand(cmdItem)
 	writer := &ollamaPullLogWriter{taskItem: taskItem}
 	cmdItem.Stdout = writer
 	cmdItem.Stderr = writer
@@ -413,9 +412,7 @@ func runOllamaPullWithProcess(taskItem *task.Task, containerName, modelName stri
 	waitErr := cmdItem.Wait()
 	writer.Flush()
 	if ctx.Err() == context.DeadlineExceeded {
-		if cmdItem.Process != nil && cmdItem.Process.Pid > 0 {
-			_ = syscall.Kill(-cmdItem.Process.Pid, syscall.SIGKILL)
-		}
+		killLongRunningCommand(cmdItem)
 		return buserr.New("ErrCmdTimeout")
 	}
 	if waitErr == nil {

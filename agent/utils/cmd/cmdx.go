@@ -115,9 +115,7 @@ func (c *CommandHelper) run(name string, arg ...string) (string, error) {
 			cmd = exec.CommandContext(c.context, name, arg...)
 		}
 	}
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
-	}
+	configureManagedCommand(cmd)
 
 	customWriter := &CustomWriter{taskItem: c.taskItem}
 	var stdout, stderr bytes.Buffer
@@ -167,9 +165,7 @@ func (c *CommandHelper) run(name string, arg ...string) (string, error) {
 		}
 		return stdout.String(), nil
 	case <-newContext.Done():
-		if cmd.Process != nil && cmd.Process.Pid > 0 {
-			syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		}
+		terminateManagedCommand(cmd)
 		var err error
 		switch newContext.Err() {
 		case context.DeadlineExceeded:

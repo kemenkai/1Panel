@@ -28,6 +28,7 @@ import { MsgSuccess } from '@/utils/message';
 const showPage = ref(false);
 const enable = ref(false);
 const loading = ref(false);
+const rules = {};
 const form = reactive({
     operate: 'enable',
     sslRejectHandshake: false,

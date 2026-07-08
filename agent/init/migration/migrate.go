@@ -83,6 +83,8 @@ func InitAgentDB() {
 		migrations.AddFileManageAISettings,
 		migrations.AddFileShareTable,
 		migrations.AddFileHistoryTable,
+		migrations.UpdateWindowsDockerDefaults,
+		migrations.AddWindowsServiceTable,
 	})
 	if err := m.Migrate(); err != nil {
 		global.LOG.Error(err)

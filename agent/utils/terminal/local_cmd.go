@@ -3,22 +3,19 @@ package terminal
 import (
 	"os"
 	"os/exec"
-	"syscall"
 	"time"
-	"unsafe"
 
 	"github.com/1Panel-dev/1Panel/agent/global"
 	"github.com/creack/pty"
 	"github.com/pkg/errors"
 )
 
-const (
-	DefaultCloseSignal  = syscall.SIGINT
-	DefaultCloseTimeout = 10 * time.Second
-)
+var DefaultCloseSignal os.Signal = os.Interrupt
+
+const DefaultCloseTimeout = 10 * time.Second
 
 type LocalCommand struct {
-	closeSignal  syscall.Signal
+	closeSignal  os.Signal
 	closeTimeout time.Duration
 
 	cmd *exec.Cmd
@@ -71,11 +68,11 @@ func (lcmd *LocalCommand) Close() error {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if lcmd.cmd != nil && lcmd.cmd.Process != nil {
-		lcmd.cmd.Process.Signal(syscall.SIGTERM)
+		_ = lcmd.cmd.Process.Signal(lcmd.closeSignal)
 		time.Sleep(50 * time.Millisecond)
 
 		if lcmd.cmd.ProcessState == nil || !lcmd.cmd.ProcessState.Exited() {
-			lcmd.cmd.Process.Kill()
+			_ = lcmd.cmd.Process.Kill()
 		}
 	}
 	_ = lcmd.pty.Close()
@@ -83,28 +80,7 @@ func (lcmd *LocalCommand) Close() error {
 }
 
 func (lcmd *LocalCommand) ResizeTerminal(width int, height int) error {
-	window := struct {
-		row uint16
-		col uint16
-		x   uint16
-		y   uint16
-	}{
-		uint16(height),
-		uint16(width),
-		0,
-		0,
-	}
-	_, _, errno := syscall.Syscall(
-		syscall.SYS_IOCTL,
-		lcmd.pty.Fd(),
-		syscall.TIOCSWINSZ,
-		uintptr(unsafe.Pointer(&window)),
-	)
-	if errno != 0 {
-		return errno
-	} else {
-		return nil
-	}
+	return pty.Setsize(lcmd.pty, &pty.Winsize{Rows: uint16(height), Cols: uint16(width)})
 }
 
 func (lcmd *LocalCommand) Wait(quitChan chan bool) {

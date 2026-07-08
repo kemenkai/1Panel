@@ -10,7 +10,7 @@
                 >
                     <div class="flex items-center gap-3">
                         <div class="flex-1">
-                            <MsgInfo :info="value.name" :width="300" class="text-gray-700" />
+                            <MsgInfo :info="value.name" width="300" class="text-gray-700" />
                             <div class="text-gray-500">
                                 {{ value.percent === 100 ? $t('file.downloadSuccess') : $t('file.downloading') }}
                             </div>

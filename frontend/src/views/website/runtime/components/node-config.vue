@@ -24,10 +24,10 @@ import { useVModel } from '@vueuse/core';
 import type { PropType } from 'vue';
 
 interface RuntimeConfigFields {
-    exposedPorts: any[];
-    environments: any[];
-    volumes: any[];
-    extraHosts: any[];
+    exposedPorts?: any[];
+    environments?: any[];
+    volumes?: any[];
+    extraHosts?: any[];
 }
 
 const props = defineProps({

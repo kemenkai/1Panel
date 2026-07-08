@@ -6,7 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path"
+	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/1Panel-dev/1Panel/agent/app/dto"
@@ -15,6 +16,7 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/utils/cmd"
 	"github.com/1Panel-dev/1Panel/agent/utils/controller"
 	"github.com/1Panel-dev/1Panel/agent/utils/docker"
+	"github.com/1Panel-dev/1Panel/agent/utils/platform"
 )
 
 type DockerService struct{}
@@ -89,9 +91,10 @@ func (u *DockerService) LoadDockerConf() (*dto.DaemonJsonConf, error) {
 		data.Version = itemVersion.Version
 	}
 	data.IsSwarm = false
-	stdout2, _ := cmd.RunDefaultWithStdoutBashC("docker info  | grep Swarm")
-	if string(stdout2) == " Swarm: active\n" {
-		data.IsSwarm = true
+	if cmd.Which("docker") {
+		if out, err := exec.Command("docker", "info", "--format", "{{.Swarm.LocalNodeState}}").CombinedOutput(); err == nil {
+			data.IsSwarm = strings.EqualFold(strings.TrimSpace(string(out)), "active")
+		}
 	}
 	if _, err := os.Stat(constant.DaemonJsonPath); err != nil {
 		return &data, nil
@@ -242,7 +245,7 @@ func (u *DockerService) UpdateConf(req dto.SettingUpdate, withRestart bool) erro
 }
 func createIfNotExistDaemonJsonFile() error {
 	if _, err := os.Stat(constant.DaemonJsonPath); err != nil && os.IsNotExist(err) {
-		if err = os.MkdirAll(path.Dir(constant.DaemonJsonPath), os.ModePerm); err != nil {
+		if err = os.MkdirAll(filepath.Dir(constant.DaemonJsonPath), os.ModePerm); err != nil {
 			return err
 		}
 		var daemonFile *os.File
@@ -351,7 +354,7 @@ func (u *DockerService) UpdateConfByFile(req dto.DaemonJsonUpdateByFile) error {
 
 func (u *DockerService) OperateDocker(req dto.DockerOperation) error {
 	service := "docker"
-	if req.Operation == "stop" {
+	if req.Operation == "stop" && platform.Current() != platform.OSWindows {
 		isSocketActive, _ := controller.CheckExist("docker.socket")
 		if isSocketActive {
 			if err := controller.HandleStop("docker.socket"); err != nil {
@@ -423,12 +426,16 @@ func validateDockerConfig() error {
 	if !cmd.Which("dockerd") {
 		return nil
 	}
-	stdout, err := cmd.RunDefaultWithStdoutBashC("dockerd --validate")
-	if strings.Contains(stdout, "unknown flag: --validate") {
+	out, err := exec.Command("dockerd", "--validate").CombinedOutput()
+	output := strings.TrimSpace(string(out))
+	if strings.Contains(output, "unknown flag: --validate") {
 		return nil
 	}
-	if err != nil || (stdout != "" && strings.TrimSpace(stdout) != "configuration OK") {
-		return fmt.Errorf("Docker configuration validation failed, %v", err)
+	if err != nil {
+		return fmt.Errorf("Docker configuration validation failed: %w, output: %s", err, output)
+	}
+	if output != "" && !strings.EqualFold(output, "configuration OK") {
+		return fmt.Errorf("Docker configuration validation failed, output: %s", output)
 	}
 	return nil
 }

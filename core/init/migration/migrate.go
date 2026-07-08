@@ -26,6 +26,7 @@ func Init() {
 		migrations.AddDiskMenu,
 		migrations.AddAgentsMenu,
 		migrations.AddSimpleNodeGroup,
+		migrations.AddSimpleNodeAPIKey,
 		migrations.AddUpgradeBackupCopies,
 		migrations.AddScriptSync,
 		migrations.UpdateXpackHideMenuSort,
@@ -38,6 +39,7 @@ func Init() {
 		migrations.UpdateAiModelMenuStructure,
 		migrations.AddDocSourceSetting,
 		migrations.AddAppStoreInstallAllowPortSetting,
+		migrations.AddEnhanceHideMenu,
 	})
 	if err := m.Migrate(); err != nil {
 		global.LOG.Error(err)

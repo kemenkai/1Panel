@@ -617,6 +617,13 @@ var AddSimpleNodeGroup = &gormigrate.Migration{
 	},
 }
 
+var AddSimpleNodeAPIKey = &gormigrate.Migration{
+	ID: "20260422-add-simple-node-api-key",
+	Migrate: func(tx *gorm.DB) error {
+		return tx.AutoMigrate(&model.SimpleNode{})
+	},
+}
+
 var AddUpgradeBackupCopies = &gormigrate.Migration{
 	ID: "20250925-add-upgrade-backup-copies",
 	Migrate: func(tx *gorm.DB) error {
@@ -871,6 +878,49 @@ var AddAppStoreInstallAllowPortSetting = &gormigrate.Migration{
 			return tx.Model(&model.Setting{}).Where("key = ?", "InstallAllowPort").Update("value", constant.StatusDisable).Error
 		}
 		return nil
+	},
+}
+
+var AddEnhanceHideMenu = &gormigrate.Migration{
+	ID: "20260430-add-enhance-hide-menu",
+	Migrate: func(tx *gorm.DB) error {
+		var menuJSON string
+		if err := tx.Model(&model.Setting{}).Where("key = ?", "HideMenu").Pluck("value", &menuJSON).Error; err != nil {
+			return err
+		}
+		if menuJSON == "" {
+			return tx.Model(&model.Setting{}).
+				Where("key = ?", "HideMenu").
+				Update("value", helper.LoadMenus()).Error
+		}
+		if strings.Contains(menuJSON, `"Enhance-Menu"`) && strings.Contains(menuJSON, `"/enhance"`) {
+			return nil
+		}
+
+		var menus []dto.ShowMenu
+		if err := json.Unmarshal([]byte(menuJSON), &menus); err != nil {
+			return tx.Model(&model.Setting{}).
+				Where("key = ?", "HideMenu").
+				Update("value", helper.LoadMenus()).Error
+		}
+
+		menus = append(menus, dto.ShowMenu{
+			ID:       "14",
+			Disabled: false,
+			Title:    "setting.enhance",
+			IsShow:   true,
+			Label:    "Enhance-Menu",
+			Path:     "/enhance",
+			Sort:     1400,
+		})
+
+		updatedJSON, err := json.Marshal(menus)
+		if err != nil {
+			return tx.Model(&model.Setting{}).
+				Where("key = ?", "HideMenu").
+				Update("value", helper.LoadMenus()).Error
+		}
+		return tx.Model(&model.Setting{}).Where("key = ?", "HideMenu").Update("value", string(updatedJSON)).Error
 	},
 }
 

@@ -50,7 +50,7 @@ export namespace Host {
         passPhrase: string;
         password: string;
 
-        localSSHConnShow: string;
+        localSSHConnShow?: string;
     }
     export interface GroupChange {
         id: number;

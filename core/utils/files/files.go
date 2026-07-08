@@ -1,6 +1,8 @@
 package files
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"crypto/md5"
 	"encoding/hex"
 	"errors"
@@ -9,6 +11,8 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -40,6 +44,10 @@ func CopyFile(src, dst string, withName bool) error {
 	defer target.Close()
 
 	if _, err = io.Copy(target, source); err != nil {
+		return err
+	}
+	// close before rename: renaming an open file fails on Windows (sharing violation)
+	if err = target.Close(); err != nil {
 		return err
 	}
 	if err = os.Rename(dst+"_temp", dst); err != nil {
@@ -150,6 +158,13 @@ func HandleUnTar(sourceFile, targetDir string, secret string) error {
 			return err
 		}
 	}
+	// Windows has no bash/tar; extract .tar.gz natively (encrypted archives rely on openssl and stay unsupported)
+	if runtime.GOOS == "windows" {
+		if len(secret) != 0 {
+			return errors.New("encrypted archive is not supported on Windows")
+		}
+		return unTarGzNative(sourceFile, targetDir)
+	}
 	commands := ""
 	if len(secret) != 0 {
 		extraCmd := "openssl enc -d -aes-256-cbc -k '" + secret + "' -in " + sourceFile + " | "
@@ -165,6 +180,60 @@ func HandleUnTar(sourceFile, targetDir string, secret string) error {
 	if err != nil {
 		global.LOG.Errorf("do handle untar failed, stdout: %s, err: %v", stdout, err)
 		return errors.New(stdout)
+	}
+	return nil
+}
+
+func unTarGzNative(sourceFile, targetDir string) error {
+	f, err := os.Open(sourceFile)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return err
+	}
+	defer gz.Close()
+
+	cleanRoot := filepath.Clean(targetDir)
+	tr := tar.NewReader(gz)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(cleanRoot, filepath.FromSlash(hdr.Name))
+		// guard against path traversal (zip-slip)
+		if target != cleanRoot && !strings.HasPrefix(target, cleanRoot+string(os.PathSeparator)) {
+			return fmt.Errorf("unsafe path %s in archive", hdr.Name)
+		}
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(target, os.ModePerm); err != nil {
+				return err
+			}
+		case tar.TypeReg:
+			if err := os.MkdirAll(filepath.Dir(target), os.ModePerm); err != nil {
+				return err
+			}
+			out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(hdr.Mode&0o777))
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(out, tr); err != nil {
+				_ = out.Close()
+				return err
+			}
+			if err := out.Close(); err != nil {
+				return err
+			}
+		default:
+			// symlinks/devices are not supported on Windows; skip
+		}
 	}
 	return nil
 }
@@ -221,6 +290,10 @@ func DownloadFileWithProxyStream(url, dst string) error {
 	}
 	if err = out.Sync(); err != nil {
 		return fmt.Errorf("sync download file [%s] error, err %s", dst, err.Error())
+	}
+	// close before rename: renaming an open file fails on Windows (sharing violation)
+	if err = out.Close(); err != nil {
+		return fmt.Errorf("close download file [%s] error, err %s", dst, err.Error())
 	}
 	if err = os.Rename(tmpDst, dst); err != nil {
 		return fmt.Errorf("rename download file [%s] error, err %s", dst, err.Error())

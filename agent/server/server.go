@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"github.com/gin-gonic/gin"
 
@@ -29,6 +30,7 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/init/validator"
 	"github.com/1Panel-dev/1Panel/agent/init/viper"
 	"github.com/1Panel-dev/1Panel/agent/utils/encrypt"
+	"github.com/1Panel-dev/1Panel/agent/utils/platform"
 	"github.com/1Panel-dev/1Panel/agent/utils/re"
 )
 
@@ -62,14 +64,24 @@ func Start() {
 	}
 
 	if global.IsMaster {
-		_ = os.Remove("/etc/1panel/agent.sock")
-		_ = os.Mkdir("/etc/1panel", constant.DirPerm)
-		listener, err := net.Listen("unix", "/etc/1panel/agent.sock")
-		if err != nil {
+		if platform.UseLocalAgentSocket() {
+			_ = os.Remove(platform.LocalAgentSockPath)
+			_ = os.MkdirAll(filepath.Dir(platform.LocalAgentSockPath), constant.DirPerm)
+			listener, err := net.Listen("unix", platform.LocalAgentSockPath)
+			if err != nil {
+				panic(err)
+			}
+			business.Init()
+			_ = server.Serve(listener)
+			return
+		}
+
+		server.Addr = platform.LocalAgentHTTPAddr
+		business.Init()
+		global.LOG.Infof("listen at http://%s", server.Addr)
+		if err := server.ListenAndServe(); err != nil {
 			panic(err)
 		}
-		business.Init()
-		_ = server.Serve(listener)
 		return
 	} else {
 		server.Addr = fmt.Sprintf("0.0.0.0:%s", global.CONF.Base.Port)

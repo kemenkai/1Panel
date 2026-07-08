@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"strings"
 
 	"github.com/1Panel-dev/1Panel/core/cmd/server/conf"
 	"github.com/1Panel-dev/1Panel/core/global"
-	"github.com/1Panel-dev/1Panel/core/utils/cmd"
 	"github.com/1Panel-dev/1Panel/core/utils/common"
+	"github.com/1Panel-dev/1Panel/core/utils/platform"
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
@@ -20,7 +19,7 @@ func Init() {
 	baseDir := "/opt"
 	port := "9999"
 	mode := ""
-	version := "v2.0.0"
+	version := "v2.1.10"
 	username, password, entrance, language, edition := "", "", "", "zh", ""
 	v := viper.NewWithOptions()
 	v.SetConfigType("yaml")
@@ -45,7 +44,7 @@ func Init() {
 		version = common.LoadParams("ORIGINAL_VERSION")
 		username = common.LoadParams("ORIGINAL_USERNAME")
 		password = common.LoadParams("ORIGINAL_PASSWORD")
-		entrance = common.LoadParams("ORIGINAL_ENTRANCE")
+		entrance = common.LoadParamsWithoutPanic("ORIGINAL_ENTRANCE")
 		language = common.LoadParams("LANGUAGE")
 		edition = common.LoadParamsWithoutPanic("PANEL_EDITION")
 
@@ -106,9 +105,5 @@ func Init() {
 }
 
 func loadChangeInfo() string {
-	stdout, err := cmd.RunDefaultWithStdoutBashC("grep '^CHANGE_USER_INFO=' /usr/local/bin/1pctl | cut -d'=' -f2")
-	if err != nil {
-		return ""
-	}
-	return strings.ReplaceAll(stdout, "\n", "")
+	return platform.ReadParam("CHANGE_USER_INFO")
 }

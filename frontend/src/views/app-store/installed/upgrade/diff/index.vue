@@ -20,6 +20,7 @@
 
 <script setup lang="ts">
 import { nextTick, ref } from 'vue';
+import type { editor as MonacoEditor } from 'monaco-editor';
 import { loadMonacoLanguageSupport, setupMonacoEnvironment } from '@/utils/monaco';
 
 type MonacoEditorApi = typeof import('monaco-editor/esm/vs/editor/editor.api');
@@ -30,9 +31,9 @@ const oldContent = ref('');
 const em = defineEmits(['confirm']);
 
 let monaco: MonacoEditorApi | null = null;
-let originalModel: MonacoEditorApi['editor']['ITextModel'] | null = null;
-let modifiedModel: MonacoEditorApi['editor']['ITextModel'] | null = null;
-let editor: MonacoEditorApi['editor']['IStandaloneDiffEditor'] | null = null;
+let originalModel: MonacoEditor.ITextModel | null = null;
+let modifiedModel: MonacoEditor.ITextModel | null = null;
+let editor: MonacoEditor.IStandaloneDiffEditor | null = null;
 
 const container = ref();
 

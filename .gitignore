@@ -66,3 +66,21 @@ AGENTS.md
 opencode.json
 superpowers
 .worktrees/
+
+# --- local artifacts of this fork's dev environment ---
+/build/
+/output/
+/logs/
+/build-logs/
+/tmp/
+/.gocache/
+/.gotmp/
+/.ccg/
+/.claude/
+/.codex/
+/.gemini/
+/.agents/
+/*.tar.xz
+/*.zip
+/application-dev.yml
+/tmp-*.png

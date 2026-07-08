@@ -8,16 +8,25 @@ import (
 	"go/token"
 	"os"
 	"os/exec"
-	"path"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 func TestGenerateXlog(t *testing.T) {
-	workDir := "/usr/songliu/dev-v2/1Panel"
+	if os.Getenv("GENERATE_XLOG") != "1" {
+		t.Skip("set GENERATE_XLOG=1 to regenerate x-log.json")
+	}
+	workDir := repoRoot(t)
 	fset := token.NewFileSet()
 
-	apiDirs := []string{workDir + "/agent/app/api/v2", workDir + "/core/app/api/v2", workDir + "/agent/xpack/app/api/v2", workDir + "/core/xpack/app/api/v2"}
+	apiDirs := []string{
+		filepath.Join(workDir, "agent", "app", "api", "v2"),
+		filepath.Join(workDir, "core", "app", "api", "v2"),
+		filepath.Join(workDir, "agent", "xpack", "app", "api", "v2"),
+		filepath.Join(workDir, "core", "xpack", "app", "api", "v2"),
+	}
 
 	xlogMap := make(map[string]operationJson)
 	for _, dir := range apiDirs {
@@ -26,7 +35,7 @@ func TestGenerateXlog(t *testing.T) {
 			if info.IsDir() {
 				continue
 			}
-			fileItem, err := parser.ParseFile(fset, path.Join(dir, info.Name()), nil, parser.ParseComments)
+			fileItem, err := parser.ParseFile(fset, filepath.Join(dir, info.Name()), nil, parser.ParseComments)
 			if err != nil {
 				continue
 			}
@@ -64,14 +73,20 @@ func TestGenerateXlog(t *testing.T) {
 	if err := os.WriteFile("x-log.json", newJson, 0640); err != nil {
 		panic(fmt.Sprintf("write core x-log.json failed, err: %v", err))
 	}
-	if err := os.WriteFile(workDir+"/agent/cmd/server/docs/x-log.json", newJson, 0640); err != nil {
+	if err := os.WriteFile(filepath.Join(workDir, "agent", "cmd", "server", "docs", "x-log.json"), newJson, 0640); err != nil {
 		panic(fmt.Sprintf("write agent x-log.json failed, err: %v", err))
 	}
 }
 
 func TestGenerateSwaggerDoc(t *testing.T) {
-	workDir := "/usr/songliu/dev-v2/1Panel"
-	swagBin := "/root/go/bin/swag"
+	if os.Getenv("GENERATE_SWAGGER_DOCS") != "1" {
+		t.Skip("set GENERATE_SWAGGER_DOCS=1 to regenerate swagger docs")
+	}
+	workDir := repoRoot(t)
+	swagBin := os.Getenv("SWAG_BIN")
+	if swagBin == "" {
+		swagBin = "swag"
+	}
 
 	cmd1 := exec.Command(swagBin, "init", "-o", workDir+"/core/cmd/server/docs/docs_agent", "-d", workDir+"/agent", "-g", "../agent/cmd/server/main.go")
 	cmd1.Dir = workDir
@@ -149,6 +164,15 @@ func TestGenerateSwaggerDoc(t *testing.T) {
 
 	_ = os.RemoveAll(workDir + "/core/cmd/server/docs/docs_agent")
 	_ = os.RemoveAll(workDir + "/core/cmd/server/docs/docs_core")
+}
+
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("failed to resolve current file")
+	}
+	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", "..", ".."))
 }
 
 type Swagger struct {

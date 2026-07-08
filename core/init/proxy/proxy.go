@@ -6,9 +6,9 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"time"
-)
 
-const SockPath = "/etc/1panel/agent.sock"
+	"github.com/1Panel-dev/1Panel/core/utils/platform"
+)
 
 var (
 	LocalAgentProxy *httputil.ReverseProxy
@@ -18,15 +18,22 @@ func Init() {
 	dialer := &net.Dialer{
 		Timeout: 5 * time.Second,
 	}
-	dialUnix := func(ctx context.Context, network, addr string) (net.Conn, error) {
-		return dialer.DialContext(ctx, "unix", SockPath)
-	}
+	targetHost := "unix"
 	transport := &http.Transport{
-		DialContext:         dialUnix,
 		ForceAttemptHTTP2:   false,
 		MaxIdleConns:        50,
 		MaxIdleConnsPerHost: 50,
 		IdleConnTimeout:     30 * time.Second,
+	}
+	if platform.UseLocalAgentSocket() {
+		transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return dialer.DialContext(ctx, "unix", platform.LocalAgentSockPath)
+		}
+	} else {
+		targetHost = platform.LocalAgentHTTPAddr
+		transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return dialer.DialContext(ctx, "tcp", platform.LocalAgentHTTPAddr)
+		}
 	}
 	LocalAgentProxy = &httputil.ReverseProxy{
 		Director: func(req *http.Request) {
@@ -41,7 +48,7 @@ func Init() {
 				req.Header.Set("X-Forwarded-Host", req.Host)
 			}
 			req.URL.Scheme = "http"
-			req.URL.Host = "unix"
+			req.URL.Host = targetHost
 		},
 		Transport: transport,
 		ErrorHandler: func(rw http.ResponseWriter, req *http.Request, err error) {

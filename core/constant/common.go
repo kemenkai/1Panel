@@ -118,6 +118,12 @@ var WebUrlMap = map[string]struct{}{
 	"/logs/ssh":       {},
 	"/logs/task":      {},
 
+	"/enhance":                 {},
+	"/enhance/home":            {},
+	"/enhance/simple-node":     {},
+	"/enhance/windows-service": {},
+	"/enhance/local-app":       {},
+
 	"/settings":               {},
 	"/settings/panel":         {},
 	"/settings/backupaccount": {},
@@ -127,6 +133,7 @@ var WebUrlMap = map[string]struct{}{
 	"/settings/alert":         {},
 	"/settings/snapshot":      {},
 	"/settings/expired":       {},
+	"/settings/simple-node":   {},
 
 	"/toolbox":              {},
 	"/toolbox/device":       {},

@@ -42,7 +42,7 @@ const tabLabels: Record<LocalTab, string> = {
     tensorrt: 'TensorRT LLM',
 };
 
-const buttons = [
+const buttons: Array<{ label: string; value: LocalTab }> = [
     { label: tabLabels.ollama, value: 'ollama' },
     { label: tabLabels.vllm, value: 'vllm' },
     { label: tabLabels.tensorrt, value: 'tensorrt' },

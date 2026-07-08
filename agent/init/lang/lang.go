@@ -10,6 +10,7 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/global"
 	"github.com/1Panel-dev/1Panel/agent/utils/cmd"
 	"github.com/1Panel-dev/1Panel/agent/utils/files"
+	"github.com/1Panel-dev/1Panel/agent/utils/platform"
 )
 
 func Init() {
@@ -19,6 +20,15 @@ func Init() {
 func initLang() {
 	fileOp := files.NewFileOp()
 	geoPath := path.Join(global.CONF.Base.InstallDir, "1panel/geo/GeoIP.mmdb")
+	// On Windows the bash-based command-output translation (lang/zh.sh) does not
+	// apply, and the Linux-only /usr/local/bin paths are not writable. Mirror the
+	// core node behaviour: only ensure the GeoIP database, then return.
+	if platform.Current() == platform.OSWindows {
+		if !fileOp.Stat(geoPath) {
+			downloadGeoFromRemote(fileOp, geoPath)
+		}
+		return
+	}
 	isLangExist := fileOp.Stat("/usr/local/bin/lang/zh.sh")
 	isGeoExist := fileOp.Stat(geoPath)
 	if isLangExist && isGeoExist {

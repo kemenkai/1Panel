@@ -17,10 +17,14 @@ echo "==> git fetch ${UPSTREAM_REMOTE} --tags"
 git fetch "$UPSTREAM_REMOTE" --tags --prune
 
 if [ $# -eq 0 ]; then
+    BASE_TAG="$(git describe --tags --abbrev=0 2>/dev/null || echo v0.0.0)"
     echo ""
-    echo "==> 尚未合并进当前分支的官方 tag（新 → 旧，最多 15 个）:"
+    echo "==> 当前基线: ${BASE_TAG}；尚未合并的更新官方 tag（新 → 旧，最多 15 个）:"
     count=0
     for t in $(git tag -l 'v*' --sort=-v:refname); do
+        # 只看比当前基线更新的 tag，跳过发布分支上的历史 tag
+        [ "$(printf '%s\n%s\n' "$BASE_TAG" "$t" | sort -V | tail -1)" = "$t" ] || continue
+        [ "$t" = "$BASE_TAG" ] && continue
         if ! git merge-base --is-ancestor "$t" HEAD 2>/dev/null; then
             echo "    $t"
             count=$((count + 1))

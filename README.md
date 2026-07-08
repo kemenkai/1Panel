@@ -1,3 +1,11 @@
+> **关于本分支 / About this fork**
+>
+> 本分支在官方 1Panel（基于 v2.1.10）之上增加了**跨平台服务管理**能力：可将 JAR 程序或交付压缩包一键部署为系统服务（Windows 使用 WinSW、Linux 使用 systemd），并提供对 **Windows 平台的支持**。除此之外与官方版本保持一致。
+>
+> This fork extends the official 1Panel (based on v2.1.10) with **cross-platform service management**: deploy a JAR or a delivery package as a system service in one click (WinSW on Windows, systemd on Linux), together with **Windows platform support**. Everything else follows the official upstream.
+
+---
+
 <p align="center"><a href="https://1panel.pro"><img src="https://resource.1panel.pro/img/1panel-logo.png" alt="1Panel" width="300" /></a></p>
 
 <h3 align="center">The open-source VPS control panel with native AI agent support</h3>

@@ -11,7 +11,6 @@ import (
 	"github.com/1Panel-dev/1Panel/core/app/model"
 	"github.com/1Panel-dev/1Panel/core/buserr"
 	"github.com/1Panel-dev/1Panel/core/constant"
-	"github.com/1Panel-dev/1Panel/core/extensions/enhance"
 	"github.com/1Panel-dev/1Panel/core/global"
 	initauth "github.com/1Panel-dev/1Panel/core/init/auth"
 	"github.com/1Panel-dev/1Panel/core/utils/captcha"
@@ -81,17 +80,6 @@ func (b *BaseApi) Login(c *gin.Context) {
 		global.IPTracker.Clear(ip)
 	}
 	helper.SuccessWithData(c, user)
-}
-
-func (b *BaseApi) SimpleNodeLogin(c *gin.Context) {
-	redirectPath, err := enhance.SimpleNodeLogin(c)
-	if err != nil {
-		go saveLoginLogs(c, err)
-		c.Redirect(enhance.LoginRedirectStatus(), enhance.LoginRedirectPath())
-		return
-	}
-	go saveLoginLogs(c, nil)
-	c.Redirect(enhance.LoginRedirectStatus(), redirectPath)
 }
 
 // @Tags Auth

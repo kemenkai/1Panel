@@ -1,6 +1,5 @@
 import http from '@/api';
 import type { WindowsService } from '@/api/interface/windows-service';
-import type { Enhance } from './types';
 
 const buildNodeHeaders = (node?: string) => {
     if (!node) {
@@ -9,38 +8,6 @@ const buildNodeHeaders = (node?: string) => {
     return {
         CurrentNode: node,
     };
-};
-
-export const listAllSimpleNodes = () => {
-    return http.get<Array<Enhance.SimpleNodeItem>>(`/core/nodes/simple/all`);
-};
-
-export const createSimpleNode = (params: Enhance.SimpleNodeCreate) => {
-    return http.post(`/core/xpack/nodes/simple`, params);
-};
-
-export const updateSimpleNode = (params: Enhance.SimpleNodeUpdate) => {
-    return http.post(`/core/xpack/nodes/simple/update/base`, params);
-};
-
-export const deleteSimpleNode = (id: number) => {
-    return http.post(`/core/xpack/nodes/simple/del`, { ids: [id] });
-};
-
-export const checkSimpleNode = (params: Partial<Enhance.SimpleNodeUpdate>) => {
-    return http.post<Enhance.SimpleNodeItem>(`/core/xpack/nodes/simple/check`, params);
-};
-
-export const refreshSimpleNode = (id: number) => {
-    return http.post<Enhance.SimpleNodeItem>(`/core/xpack/nodes/simple/refresh`, { id });
-};
-
-export const refreshAllSimpleNodes = () => {
-    return http.post<Array<Enhance.SimpleNodeItem>>(`/core/xpack/nodes/simple/refresh/all`);
-};
-
-export const buildSimpleNodeVisitURL = (id: number, redirect = '/') => {
-    return http.post<string>(`/core/xpack/nodes/simple/visit`, { id, redirect });
 };
 
 export const listWindowsServices = (node?: string) => {

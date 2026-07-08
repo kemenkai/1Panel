@@ -2432,24 +2432,10 @@ const message = {
 
         about: '关于',
         enhance: '增强功能',
-        enhanceNodeDesc: '集中管理多机节点、访问密钥和子节点直达能力。',
         enhanceWindowsServiceDesc: '统一管理主机服务，并在创建向导里直接发布 Java、交付包、DLL 等程序。',
         enhanceWindowsServiceAction: '服务管理',
         enhanceWindowsServiceHelper:
             '点击“创建”后可以直接选择 Java、交付包或 DLL 模板，填写程序路径后即可注册为系统服务。',
-        enhanceLocalAppTitle: 'Linux 本地应用发布',
-        enhanceLocalAppDesc:
-            'Linux 节点发布交付包或独立 Java 程序，请前往应用商店使用“同步本地应用”或上传本地应用包。',
-        enhanceLocalAppAction: '前往应用商店',
-        enhanceLocalAppHelper:
-            '在这里统一完成 Linux 本地应用发布：同步本地应用清单、上传本地应用包，然后前往应用商店安装。',
-        enhanceLocalAppOnlyLinux: '当前面板不是 Linux 节点，请切换到 Linux 节点后再使用本地应用发布。',
-        enhanceLocalAppSyncDesc:
-            '同步当前 Linux 面板本地准备好的应用定义，让交付包或独立 Java 应用出现在应用商店中。',
-        enhanceLocalAppUploadDesc:
-            '上传打包好的本地应用归档（*.tar.gz），预览其中的应用，并导入到本地应用商店。',
-        enhanceLocalAppBrowseDesc:
-            '同步或上传完成后，可前往应用商店执行安装，或者前往已安装应用页面管理已发布服务。',
         enhanceWindowsServiceNodeTip:
             '当前面板所在系统暂不支持服务管理，请切换到 Windows 或 Linux 节点后再使用。',
         versionItem: '当前版本',
@@ -2680,16 +2666,6 @@ const message = {
         link: '链接',
         showCurrentArch: '本服务器架构应用',
         syncLocalApp: '同步本地应用',
-        uploadLocalAppPackage: '上传本地应用包',
-        uploadLocalAppPackageHelper: '上传包含一个或多个本地应用的 .tar.gz 安装包到当前 Linux 面板。',
-        uploadLocalAppPackageDetected: '检测到的应用',
-        uploadLocalAppPackageExisting: '检测到已存在的应用，请先选择导入冲突处理策略。',
-        uploadLocalAppPackageStrategy: '冲突处理策略',
-        uploadLocalAppPackageStrategyOverwrite: '覆盖已存在应用',
-        uploadLocalAppPackageStrategySkip: '跳过已存在应用',
-        uploadLocalAppPackageStrategyFail: '遇到冲突立即停止',
-        uploadLocalAppPackageFormatError: '仅支持 .tar.gz 格式的本地应用安装包。',
-        uploadLocalAppPackageSelect: '请先选择本地应用安装包。',
         memoryRequiredHelper: '当前应用内存需求 {0}',
         gpuConfig: '开启 GPU 支持',
         gpuConfigHelper: '请确保机器有 NVIDIA GPU 并且安装 NVIDIA 驱动 和 NVIDIA docker Container Toolkit',
@@ -3998,7 +3974,6 @@ const message = {
             nodeUnbindHelper: '检测到该节点未绑定许可证，请在 [ 面板设置 - 许可证 ] 菜单中绑定后重试！',
             memTotal: '内存总计',
             nodeManagement: '多机管理',
-            communityHelper: '社区版简易节点管理：保存多个面板地址，支持快速访问、状态检测与编辑。',
             multiOverview: '多机概览',
             nodeItem: '节点管理',
             panelItem: '面板管理',

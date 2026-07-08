@@ -617,13 +617,6 @@ var AddSimpleNodeGroup = &gormigrate.Migration{
 	},
 }
 
-var AddSimpleNodeAPIKey = &gormigrate.Migration{
-	ID: "20260422-add-simple-node-api-key",
-	Migrate: func(tx *gorm.DB) error {
-		return tx.AutoMigrate(&model.SimpleNode{})
-	},
-}
-
 var AddUpgradeBackupCopies = &gormigrate.Migration{
 	ID: "20250925-add-upgrade-backup-copies",
 	Migrate: func(tx *gorm.DB) error {

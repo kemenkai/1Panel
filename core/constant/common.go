@@ -120,9 +120,7 @@ var WebUrlMap = map[string]struct{}{
 
 	"/enhance":                 {},
 	"/enhance/home":            {},
-	"/enhance/simple-node":     {},
 	"/enhance/windows-service": {},
-	"/enhance/local-app":       {},
 
 	"/settings":               {},
 	"/settings/panel":         {},
@@ -133,7 +131,6 @@ var WebUrlMap = map[string]struct{}{
 	"/settings/alert":         {},
 	"/settings/snapshot":      {},
 	"/settings/expired":       {},
-	"/settings/simple-node":   {},
 
 	"/toolbox":              {},
 	"/toolbox/device":       {},

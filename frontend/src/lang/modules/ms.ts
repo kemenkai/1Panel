@@ -4237,7 +4237,6 @@ const message = {
                 'Terdeteksi nod ini tidak terikat pada lesen. Sila ikat dalam menu [Tetapan Panel - Lesen] dan cuba lagi!',
             memTotal: 'Jumlah Memori',
             nodeManagement: 'Pengurusan Multi-Mesin',
-            communityHelper: 'Pengurusan nod ringkas edisi komuniti: simpan alamat panel untuk akses pantas, semakan status dan penyuntingan.',
             multiOverview: 'Multi-Mesin',
             nodeItem: 'Pengurusan Nod',
             panelItem: 'Pengurusan Panel',

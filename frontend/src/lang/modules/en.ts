@@ -2621,25 +2621,10 @@ const message = {
             'Detected that node {0} is already at the latest upgradable version. Please check the primary node version and try again!',
         about: 'About',
         enhance: 'Enhance',
-        enhanceNodeDesc: 'Manage multi-machine nodes, access keys, and direct child-node access in one place.',
         enhanceWindowsServiceDesc: 'Manage host services centrally and deploy Java, delivery package, and DLL programs from the create wizard.',
         enhanceWindowsServiceAction: 'Service Management',
         enhanceWindowsServiceHelper:
             'Click Create to choose the Java, Delivery Package, or DLL template, then fill in the program path to register it as a system service.',
-        enhanceLocalAppTitle: 'Linux Local App',
-        enhanceLocalAppDesc:
-            'Publish delivery packages or standalone Java services on Linux through App Store -> Sync Local App and local package upload.',
-        enhanceLocalAppAction: 'Open App Store',
-        enhanceLocalAppHelper:
-            'Use this page to publish Linux local applications: sync local manifests, upload local app packages, and then install them from App Store.',
-        enhanceLocalAppOnlyLinux:
-            'The current panel is not running on Linux. Switch to a Linux node to use local app publishing.',
-        enhanceLocalAppSyncDesc:
-            'Refresh locally prepared application definitions so delivery packages and standalone Java packages appear in App Store.',
-        enhanceLocalAppUploadDesc:
-            'Upload a packaged local app archive (*.tar.gz), preview detected apps, and import them into the local App Store.',
-        enhanceLocalAppBrowseDesc:
-            'After syncing or uploading, open App Store to install the application, or open Installed Apps to manage deployed services.',
         enhanceWindowsServiceNodeTip:
             'The current panel OS does not support service management. Switch to a Windows or Linux node to use it.',
         versionItem: 'Current Version',
@@ -2889,17 +2874,6 @@ const message = {
         link: 'Link',
         showCurrentArch: 'Architecture',
         syncLocalApp: 'Sync Local App',
-        uploadLocalAppPackage: 'Upload Local App Package',
-        uploadLocalAppPackageHelper:
-            'Upload a .tar.gz package that contains one or more local applications for the current Linux panel.',
-        uploadLocalAppPackageDetected: 'Detected applications',
-        uploadLocalAppPackageExisting: 'Existing applications detected. Choose an import strategy before uploading.',
-        uploadLocalAppPackageStrategy: 'Conflict strategy',
-        uploadLocalAppPackageStrategyOverwrite: 'Overwrite existing',
-        uploadLocalAppPackageStrategySkip: 'Skip existing',
-        uploadLocalAppPackageStrategyFail: 'Stop on conflict',
-        uploadLocalAppPackageFormatError: 'Only .tar.gz local application packages are supported.',
-        uploadLocalAppPackageSelect: 'Select a local application package first.',
         memoryRequiredHelper: 'Current application memory requirement {0}',
         gpuConfig: 'Enable GPU Support',
         gpuConfigHelper:
@@ -4334,7 +4308,6 @@ const message = {
                 'Detected that this node is not bound to a license. Please bind it in [Panel Settings - License] menu and try again!',
             memTotal: 'Total Memory',
             nodeManagement: 'Multi-Machine Management',
-            communityHelper: 'Community edition lite node management: save panel addresses for quick access, status check and editing.',
             multiOverview: 'Multi-Machine',
             nodeItem: 'Node Management',
             panelItem: 'Panel Management',

@@ -131,14 +131,6 @@ export const syncCutomAppStore = (req: App.AppStoreSync) => {
     return http.post(`/custom/app/sync`, req);
 };
 
-export const previewLocalAppPackage = (params: FormData) => {
-    return http.upload<App.LocalAppPackagePreview>(`/apps/local/package/preview`, params);
-};
-
-export const uploadLocalAppPackage = (params: FormData) => {
-    return http.upload<App.LocalAppPackageUpload>(`/apps/local/package/upload`, params);
-};
-
 export const getCurrentNodeCustomAppConfig = () => {
     return http.get<App.CustomAppStoreConfig>(`/custom/app/config`);
 };

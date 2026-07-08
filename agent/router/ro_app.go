@@ -15,8 +15,6 @@ func (a *AppRouter) InitRouter(Router *gin.RouterGroup) {
 	{
 		appRouter.POST("/sync/remote", baseApi.SyncApp)
 		appRouter.POST("/sync/local", baseApi.SyncLocalApp)
-		appRouter.POST("/local/package/preview", baseApi.PreviewLocalAppPackage)
-		appRouter.POST("/local/package/upload", baseApi.UploadLocalAppPackage)
 		appRouter.GET("/checkupdate", baseApi.GetAppListUpdate)
 		appRouter.POST("/search", baseApi.SearchApp)
 		appRouter.GET("/:key", baseApi.GetApp)

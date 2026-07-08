@@ -2,25 +2,11 @@
     <LayoutContent :title="$t('setting.enhance')" v-loading="loading">
         <template #main>
             <div class="enhance-grid">
-                <div v-if="isLinuxPanel" class="enhance-card">
-                    <div class="enhance-title">{{ $t('xpack.node.nodeManagement') }}</div>
-                    <div class="enhance-desc">{{ $t('setting.enhanceNodeDesc') }}</div>
-                    <el-button type="primary" @click="router.push({ name: 'EnhanceSimpleNode' })">
-                        {{ $t('commons.button.view') }}
-                    </el-button>
-                </div>
                 <div v-if="isWindowsPanel || isLinuxPanel" class="enhance-card">
                     <div class="enhance-title">{{ $t('setting.enhanceWindowsServiceAction') }}</div>
                     <div class="enhance-desc">{{ $t('setting.enhanceWindowsServiceDesc') }}</div>
                     <el-button type="primary" @click="router.push({ name: 'EnhanceWindowsService' })">
                         {{ $t('setting.enhanceWindowsServiceAction') }}
-                    </el-button>
-                </div>
-                <div v-if="isLinuxPanel" class="enhance-card">
-                    <div class="enhance-title">{{ $t('setting.enhanceLocalAppTitle') }}</div>
-                    <div class="enhance-desc">{{ $t('setting.enhanceLocalAppDesc') }}</div>
-                    <el-button type="primary" @click="router.push({ name: 'EnhanceLocalApp' })">
-                        {{ $t('setting.enhanceLocalAppAction') }}
                     </el-button>
                 </div>
             </div>

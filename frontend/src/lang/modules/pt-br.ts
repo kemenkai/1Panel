@@ -4385,7 +4385,6 @@ const message = {
                 'Detectamos que este nó não está vinculado a uma licença. Por favor vincule no menu [Configurações do Painel - Licença] e tente novamente!',
             memTotal: 'Memória Total',
             nodeManagement: 'Gerenciamento Multi-Máquina',
-            communityHelper: 'Gerenciamento simples de nós da edição community: salve endereços de painéis para acesso rápido, verificação de status e edição.',
             multiOverview: 'Multi-Máquina',
             nodeItem: 'Gerenciamento de Nós',
             panelItem: 'Gerenciamento de Painéis',

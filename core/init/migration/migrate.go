@@ -26,7 +26,6 @@ func Init() {
 		migrations.AddDiskMenu,
 		migrations.AddAgentsMenu,
 		migrations.AddSimpleNodeGroup,
-		migrations.AddSimpleNodeAPIKey,
 		migrations.AddUpgradeBackupCopies,
 		migrations.AddScriptSync,
 		migrations.UpdateXpackHideMenuSort,

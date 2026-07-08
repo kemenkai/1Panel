@@ -54,8 +54,6 @@ type IAppService interface {
 	GetAppUpdate() (*response.AppUpdateRes, error)
 	GetAppDetailByID(id uint) (*response.AppDetailDTO, error)
 	SyncAppListFromLocal(taskID string)
-	PreviewLocalAppPackage(packagePath string) ([]string, []string, error)
-	UploadLocalAppPackage(packagePath, taskID, strategy string) (string, []string, []string, error)
 	GetAppIcon(key string) ([]byte, string, string, error)
 	GetAppDetailByKey(appKey, version string) (response.AppDetailSimpleDTO, error)
 }

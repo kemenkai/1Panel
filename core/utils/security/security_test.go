@@ -21,10 +21,7 @@ func TestIsFrontendPathRecognizesEnhanceRoutes(t *testing.T) {
 	paths := []string{
 		"/enhance",
 		"/enhance/home",
-		"/enhance/simple-node",
 		"/enhance/windows-service",
-		"/enhance/local-app",
-		"/settings/simple-node",
 	}
 
 	for _, path := range paths {

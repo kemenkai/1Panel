@@ -4078,7 +4078,6 @@ const message = {
                 '이 노드가 라이선스에 바인딩되지 않은 것으로 감지되었습니다. [패널 설정 - 라이선스] 메뉴에서 바인딩 후 다시 시도하세요!',
             memTotal: '총 메모리',
             nodeManagement: '다중 머신 관리',
-            communityHelper: '커뮤니티 에디션 간편 노드 관리: 패널 주소를 저장하여 빠른 액세스, 상태 확인 및 편집을 지원합니다.',
             multiOverview: '다중 머신',
             nodeItem: '노드 관리',
             panelItem: '패널 관리',

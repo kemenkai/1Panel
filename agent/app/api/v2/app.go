@@ -1,15 +1,11 @@
 package v2
 
 import (
-	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 
 	"github.com/1Panel-dev/1Panel/agent/app/api/v2/helper"
 	"github.com/1Panel-dev/1Panel/agent/app/dto"
 	"github.com/1Panel-dev/1Panel/agent/app/dto/request"
-	"github.com/1Panel-dev/1Panel/agent/global"
 	"github.com/1Panel-dev/1Panel/agent/i18n"
 	"github.com/1Panel-dev/1Panel/agent/utils/appicon"
 	"github.com/gin-gonic/gin"
@@ -82,86 +78,6 @@ func (b *BaseApi) SyncLocalApp(c *gin.Context) {
 	}
 	go appService.SyncAppListFromLocal(req.TaskID)
 	helper.Success(c)
-}
-
-func saveLocalAppPackageUpload(c *gin.Context) (string, func(), error) {
-	file, err := c.FormFile("file")
-	if err != nil {
-		return "", nil, err
-	}
-	workDir, err := os.MkdirTemp(global.Dir.TmpDir, "local-app-package-*")
-	if err != nil {
-		return "", nil, err
-	}
-	cleanup := func() {
-		_ = os.RemoveAll(workDir)
-	}
-	dst := filepath.Join(workDir, file.Filename)
-	if err := c.SaveUploadedFile(file, dst); err != nil {
-		cleanup()
-		return "", nil, err
-	}
-	return dst, cleanup, nil
-}
-
-// @Tags App
-// @Summary Preview local app package
-// @Accept multipart/form-data
-// @Success 200
-// @Security ApiKeyAuth
-// @Security Timestamp
-// @Router /apps/local/package/preview [post]
-func (b *BaseApi) PreviewLocalAppPackage(c *gin.Context) {
-	packagePath, cleanup, err := saveLocalAppPackageUpload(c)
-	if err != nil {
-		helper.BadRequest(c, err)
-		return
-	}
-	defer cleanup()
-
-	appNames, existingApps, err := appService.PreviewLocalAppPackage(packagePath)
-	if err != nil {
-		helper.InternalServer(c, err)
-		return
-	}
-	helper.SuccessWithData(c, gin.H{
-		"apps":         appNames,
-		"existingApps": existingApps,
-	})
-}
-
-// @Tags App
-// @Summary Upload local app package
-// @Accept multipart/form-data
-// @Success 200
-// @Security ApiKeyAuth
-// @Security Timestamp
-// @Router /apps/local/package/upload [post]
-func (b *BaseApi) UploadLocalAppPackage(c *gin.Context) {
-	packagePath, cleanup, err := saveLocalAppPackageUpload(c)
-	if err != nil {
-		helper.BadRequest(c, err)
-		return
-	}
-
-	taskID := c.PostForm("taskID")
-	strategy := c.PostForm("strategy")
-	createdTaskID, appNames, existingApps, err := appService.UploadLocalAppPackage(packagePath, taskID, strategy)
-	if err != nil {
-		cleanup()
-		helper.InternalServer(c, err)
-		return
-	}
-	if createdTaskID == "" {
-		cleanup()
-		helper.InternalServer(c, fmt.Errorf("empty task id returned"))
-		return
-	}
-	helper.SuccessWithData(c, gin.H{
-		"taskID":       createdTaskID,
-		"apps":         appNames,
-		"existingApps": existingApps,
-	})
 }
 
 // @Tags App

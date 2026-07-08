@@ -23,17 +23,6 @@ const enhanceRouter = {
             },
         },
         {
-            path: 'simple-node',
-            name: 'EnhanceSimpleNode',
-            hidden: true,
-            component: () => import('@/views/setting/enhance/simple-node/index.vue'),
-            meta: {
-                title: 'xpack.node.nodeManagement',
-                requiresAuth: true,
-                activeMenu: '/enhance',
-            },
-        },
-        {
             path: 'windows-service',
             name: 'EnhanceWindowsService',
             hidden: true,
@@ -42,28 +31,6 @@ const enhanceRouter = {
                 title: 'setting.enhanceWindowsServiceAction',
                 requiresAuth: true,
                 activeMenu: '/enhance',
-            },
-        },
-        {
-            path: 'local-app',
-            name: 'EnhanceLocalApp',
-            hidden: true,
-            component: () => import('@/views/setting/enhance/local-app/index.vue'),
-            meta: {
-                title: 'setting.enhanceLocalAppTitle',
-                requiresAuth: true,
-                activeMenu: '/enhance',
-            },
-        },
-        {
-            path: '/settings/simple-node',
-            name: 'SimpleNode',
-            hidden: true,
-            redirect: '/enhance/simple-node',
-            meta: {
-                requiresAuth: true,
-                activeMenu: '/enhance',
-                ignoreTab: true,
             },
         },
     ],

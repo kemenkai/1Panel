@@ -4232,7 +4232,6 @@ const message = {
                 'Bu düğümün lisansa bağlı olmadığı algılandı. Lütfen [Panel Ayarları - Lisans] menüsünde bağlayın ve tekrar deneyin!',
             memTotal: 'Toplam Bellek',
             nodeManagement: 'Çoklu Makine Yönetimi',
-            communityHelper: 'Topluluk sürümü basit düğüm yönetimi: hızlı erişim, durum denetimi ve düzenleme için panel adreslerini kaydedin.',
             multiOverview: 'Çoklu Makine',
             nodeItem: 'Düğüm Yönetimi',
             panelItem: 'Panel Yönetimi',

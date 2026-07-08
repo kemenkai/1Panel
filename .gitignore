@@ -67,7 +67,7 @@ opencode.json
 superpowers
 .worktrees/
 
-# --- local artifacts of this fork's dev environment ---
+# --- local build artifacts ---
 /build/
 /output/
 /logs/
@@ -75,11 +75,6 @@ superpowers
 /tmp/
 /.gocache/
 /.gotmp/
-/.ccg/
-/.claude/
-/.codex/
-/.gemini/
-/.agents/
 /*.tar.xz
 /*.zip
 /application-dev.yml

@@ -106,8 +106,11 @@ const initEditor = async () => {
         readOnly: false,
         automaticLayout: true,
         folding: true,
+        glyphMargin: true,
         roundedSelection: false,
         overviewRulerBorder: false,
+        renderMarginRevertIcon: true,
+        renderGutterMenu: false,
     });
 
     editor.setModel({

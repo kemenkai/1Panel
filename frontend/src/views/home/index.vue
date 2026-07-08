@@ -7,17 +7,7 @@
                     path: '/',
                 },
             ]"
-        >
-            <template #route-button>
-                <div class="router-button" v-if="!isOffLine">
-                    <template v-if="!isProductPro">
-                        <el-button link type="primary" @click="toUpload">
-                            {{ $t('license.levelUpPro') }}
-                        </el-button>
-                    </template>
-                </div>
-            </template>
-        </RouterButton>
+        />
 
         <el-alert
             v-if="!isSafety && globalStore.showEntranceWarn"
@@ -76,7 +66,6 @@
                 <CardWithHeader
                     :header="$t('menu.monitor')"
                     class="card-interval chart-card"
-                    v-loading="chartOption === 'io' ? !chartsOption['ioChart'] : !chartsOption['networkChart']"
                     @mouseenter="refreshOptionsOnHover"
                 >
                     <template #header-r>
@@ -119,7 +108,7 @@
                     </template>
                     <template #body>
                         <div style="position: relative; margin-top: 60px">
-                            <div class="monitor-tags" v-if="chartOption === 'network'">
+                            <div class="monitor-tags" :style="monitorTagsStyle" v-if="chartOption === 'network'">
                                 <el-tag>
                                     {{ $t('monitor.up') }}: {{ computeSizeFromKBs(currentChartInfo.netBytesSent) }}
                                 </el-tag>
@@ -129,7 +118,7 @@
                                 <el-tag>{{ $t('home.totalSend') }}: {{ computeSize(currentInfo.netBytesSent) }}</el-tag>
                                 <el-tag>{{ $t('home.totalRecv') }}: {{ computeSize(currentInfo.netBytesRecv) }}</el-tag>
                             </div>
-                            <div class="monitor-tags" v-if="chartOption === 'io'">
+                            <div class="monitor-tags" :style="monitorTagsStyle" v-if="chartOption === 'io'">
                                 <el-tag>{{ $t('monitor.read') }}: {{ currentChartInfo.ioReadBytes }} MB</el-tag>
                                 <el-tag>{{ $t('monitor.write') }}: {{ currentChartInfo.ioWriteBytes }} MB</el-tag>
                                 <el-tag>
@@ -145,7 +134,6 @@
                                     id="ioChart"
                                     type="line"
                                     :option="chartsOption['ioChart']"
-                                    v-if="chartsOption['ioChart']"
                                     :dataZoom="true"
                                 />
                             </div>
@@ -155,7 +143,6 @@
                                     id="networkChart"
                                     type="line"
                                     :option="chartsOption['networkChart']"
-                                    v-if="chartsOption['networkChart']"
                                     :dataZoom="true"
                                 />
                             </div>
@@ -171,6 +158,7 @@
                     height="368px"
                     indicator-position=""
                     arrow="never"
+                    :autoplay="!showMemoCarousel || !memoEditing"
                 >
                     <el-carousel-item key="systemInfo">
                         <CardWithHeader :header="$t('home.systemInfo')">
@@ -353,9 +341,11 @@
                                         />
                                         <div v-else class="memo-content">
                                             <MarkDownEditor v-if="memoContent" :content="memoContent" />
-                                            <span v-else class="memo-placeholder">
-                                                {{ $t('home.memoPlaceholder') }}
-                                            </span>
+                                            <div v-else class="memo-empty">
+                                                <span class="memo-placeholder">
+                                                    {{ $t('home.memoPlaceholder') }}
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
                                 </el-scrollbar>
@@ -414,7 +404,6 @@
             </el-col>
         </el-row>
 
-        <LicenseImport ref="licenseRef" />
         <QuickJump v-if="!isWindowsLitePanel" @search="onLoadBaseInfo(false, 'all')" ref="quickJumpRef" />
 
         <DialogPro v-model="welcomeOpen" size="w-70" id="welcomeDialog">
@@ -428,7 +417,6 @@ import { onMounted, onBeforeUnmount, ref, reactive, computed, nextTick } from 'v
 import SystemStatus from '@/views/home/status/index.vue';
 import AppLauncher from '@/views/home/app/index.vue';
 import VCharts from '@/components/v-charts/index.vue';
-import LicenseImport from '@/components/license-import/index.vue';
 import QuickJump from '@/views/home/quick/index.vue';
 import CardWithHeader from '@/components/card-with-header/index.vue';
 import MarkDownEditor from '@/components/mkdown-editor/index.vue';
@@ -451,7 +439,6 @@ import {
     updateSetting,
 } from '@/api/modules/setting';
 import { GlobalStore } from '@/store';
-import { storeToRefs } from 'pinia';
 import { routerToFileWithPath, routerToNameWithQuery, routerToPath } from '@/utils/router';
 import { getWelcomePage } from '@/api/modules/auth';
 import {
@@ -469,6 +456,46 @@ const DASHBOARD_CACHE_TTL = {
     netOptions: 60 * 60 * 1000,
     ioOptions: 60 * 60 * 1000,
 };
+const monitorChartGrid = { left: 65, right: 65, bottom: '20%' };
+const monitorTagsStyle = {
+    left: `${monitorChartGrid.left}px`,
+    right: `${monitorChartGrid.right}px`,
+};
+const monitorChartEmptyLength = 20;
+const loadMonitorEmptyData = () => Array.from({ length: monitorChartEmptyLength }, () => null);
+const loadMonitorEmptyTime = () => Array.from({ length: monitorChartEmptyLength }, () => '');
+const loadMonitorChartData = (data: Array<number>) => (data.length === 0 ? loadMonitorEmptyData() : data);
+const loadMonitorChartTime = (data: Array<string>) => (data.length === 0 ? loadMonitorEmptyTime() : data);
+const loadIOChartOption = () => ({
+    xData: loadMonitorChartTime(timeIODatas.value),
+    yData: [
+        {
+            name: i18n.global.t('monitor.read'),
+            data: loadMonitorChartData(ioReadBytes.value),
+        },
+        {
+            name: i18n.global.t('monitor.write'),
+            data: loadMonitorChartData(ioWriteBytes.value),
+        },
+    ],
+    grid: monitorChartGrid,
+    formatStr: 'MB',
+});
+const loadNetworkChartOption = () => ({
+    xData: loadMonitorChartTime(timeNetDatas.value),
+    yData: [
+        {
+            name: i18n.global.t('monitor.up'),
+            data: loadMonitorChartData(netBytesSents.value),
+        },
+        {
+            name: i18n.global.t('monitor.down'),
+            data: loadMonitorChartData(netBytesRecvs.value),
+        },
+    ],
+    grid: monitorChartGrid,
+    formatStr: 'KB/s',
+});
 
 const statusRef = ref();
 const appRef = ref();
@@ -501,9 +528,7 @@ const netOptionsFromCache = ref(false);
 const ioOptionsFromCache = ref(false);
 const hasRefreshedOptionsOnHover = ref(false);
 
-const licenseRef = ref();
 const quickJumpRef = ref();
-const { isProductPro, isOffLine } = storeToRefs(globalStore);
 
 const searchInfo = reactive({
     ioOption: 'all',
@@ -610,7 +635,10 @@ const currentChartInfo = reactive({
 });
 const skipNextCurrentInfoDelta = ref(false);
 
-const chartsOption = ref({ ioChart: null, networkChart: null });
+const chartsOption = ref({
+    ioChart: loadIOChartOption(),
+    networkChart: loadNetworkChartOption(),
+});
 
 const updateCurrentInfo = (data: Dashboard.CurrentInfo) => {
     currentInfo.value = {
@@ -684,14 +712,21 @@ const onLoadIOOptions = async (force?: boolean) => {
 };
 
 const onLoadBaseInfo = async (isInit: boolean, range: string) => {
+    let resetChartData = false;
     if (range === 'all' || range === 'io') {
         ioReadBytes.value = [];
         ioWriteBytes.value = [];
         timeIODatas.value = [];
-    } else if (range === 'all' || range === 'network') {
+        resetChartData = true;
+    }
+    if (range === 'all' || range === 'network') {
         netBytesSents.value = [];
         netBytesRecvs.value = [];
         timeNetDatas.value = [];
+        resetChartData = true;
+    }
+    if (resetChartData) {
+        loadData();
     }
     try {
         const res = await loadBaseInfo(searchInfo.ioOption, searchInfo.netOption);
@@ -928,35 +963,9 @@ const saveMemo = async () => {
 
 const loadData = async () => {
     if (chartOption.value === 'io') {
-        chartsOption.value['ioChart'] = {
-            xData: timeIODatas.value,
-            yData: [
-                {
-                    name: i18n.global.t('monitor.read'),
-                    data: ioReadBytes.value,
-                },
-                {
-                    name: i18n.global.t('monitor.write'),
-                    data: ioWriteBytes.value,
-                },
-            ],
-            formatStr: 'MB',
-        };
+        chartsOption.value['ioChart'] = loadIOChartOption();
     } else {
-        chartsOption.value['networkChart'] = {
-            xData: timeNetDatas.value,
-            yData: [
-                {
-                    name: i18n.global.t('monitor.up'),
-                    data: netBytesSents.value,
-                },
-                {
-                    name: i18n.global.t('monitor.down'),
-                    data: netBytesRecvs.value,
-                },
-            ],
-            formatStr: 'KB/s',
-        };
+        chartsOption.value['networkChart'] = loadNetworkChartOption();
     }
 };
 
@@ -1024,10 +1033,6 @@ const onFocus = () => {
 };
 const onBlur = () => {
     isActive.value = false;
-};
-
-const toUpload = () => {
-    licenseRef.value.acceptParams();
 };
 
 const refreshOptionsOnHover = async () => {
@@ -1216,12 +1221,9 @@ onBeforeUnmount(() => {
 .monitor-tags {
     position: absolute;
     top: -10px;
-    left: 20px;
-
-    :deep(.el-tag) {
-        margin-right: 10px;
-        margin-bottom: 10px;
-    }
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
 }
 
 .version {
@@ -1271,6 +1273,11 @@ onBeforeUnmount(() => {
     :deep(.md-editor-content .md-editor-preview) {
         font-size: 13px;
     }
+}
+
+.memo-empty {
+    min-height: 275px;
+    padding-top: 15px;
 }
 
 .memo-placeholder {

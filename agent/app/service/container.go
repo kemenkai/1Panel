@@ -1077,6 +1077,12 @@ func (u *ContainerService) DownloadContainerLogs(containerType, container, since
 	if err := dockerCmd.Start(); err != nil {
 		return err
 	}
+	defer func() {
+		if dockerCmd.Process != nil {
+			_ = dockerCmd.Process.Kill()
+			_ = dockerCmd.Wait()
+		}
+	}()
 
 	tempFile, err := os.CreateTemp("", "cmd_output_*.txt")
 	if err != nil {
@@ -1088,7 +1094,7 @@ func (u *ContainerService) DownloadContainerLogs(containerType, container, since
 			global.LOG.Errorf("os.Remove() failed: %v", err)
 		}
 	}()
-	errCh := make(chan error)
+	errCh := make(chan error, 1)
 	go func() {
 		scanner := bufio.NewScanner(stdout)
 		var ansiRegex = re.GetRegex(re.AnsiEscapePattern)
@@ -1111,8 +1117,8 @@ func (u *ContainerService) DownloadContainerLogs(containerType, container, since
 		if err != nil {
 			global.LOG.Errorf("Error: %v", err)
 		}
-	case <-time.After(3 * time.Second):
-		global.LOG.Errorf("Timeout reached")
+	case <-time.After(40 * time.Second):
+		global.LOG.Errorf("Download container logs timeout reached")
 	}
 	info, _ := tempFile.Stat()
 

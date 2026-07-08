@@ -2107,11 +2107,13 @@ const message = {
             ai: 'AI',
             skills_hub: 'Skills Hub',
             ai_proxy: 'Proksi AI',
+            ai_benchmark: 'Penanda Aras',
             groups: 'Kumpulan',
             hosts: 'Hos',
             apps: 'Aplikasi',
             openresty: 'OpenResty',
             websites: 'Laman Web',
+            monitor: 'Pemantauan Laman Web',
             containers: 'Kontena',
             files: 'Pengurusan Fail',
             runtimes: 'Persekitaran Jalankan',
@@ -2130,6 +2132,7 @@ const message = {
             commands: 'Perintah Pantas',
             opsReport: 'Laporan Operasi',
             users: 'Pengurusan pengguna',
+            roles: 'Peranan',
             auth: 'Pengesahan log masuk',
             alert: 'Pemberitahuan amaran',
         },
@@ -2943,6 +2946,8 @@ const message = {
             'Pastikan terdapat ruang cakera yang mencukupi pada pelayan (Saiz fail snapshot: {0}, Ruang tersedia: {1})',
         recoverHelper3:
             'Pastikan seni bina pelayan sepadan dengan seni bina pelayan di mana snapshot dicipta (Seni bina pelayan semasa: {0})',
+        recoverHelper4:
+            'Operasi ini hanya menggulung balik nod utama. Jika terdapat nod anak yang telah dinaik taraf, sila gulungkan balik nod anak terlebih dahulu sebelum meneruskan.',
         rollback: 'Pulangkan semula',
         rollbackHelper:
             'Pulangkan semula pemulihan ini akan menggantikan semua fail dari pemulihan ini, dan mungkin memerlukan mulakan semula perkhidmatan Docker dan 1Panel. Adakah anda mahu meneruskan?',

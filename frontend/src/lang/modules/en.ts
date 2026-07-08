@@ -2187,11 +2187,13 @@ const message = {
             ai: 'AI',
             skills_hub: 'Skills Hub',
             ai_proxy: 'AI Proxy',
+            ai_benchmark: 'Benchmark',
             groups: 'Group',
             hosts: 'Host',
             apps: 'App',
             openresty: 'OpenResty',
             websites: 'Website',
+            monitor: 'Website Monitor',
             containers: 'Container',
             files: 'File',
             runtimes: 'Runtime',
@@ -2210,6 +2212,7 @@ const message = {
             commands: 'Quick Commands',
             opsReport: 'Ops Report',
             users: 'User Management',
+            roles: 'Role',
             auth: 'Login Authentication',
             alert: 'Alert Notifications',
         },
@@ -3019,6 +3022,8 @@ const message = {
             'Please ensure there is sufficient disk space on the server (Snapshot file size: {0}, Available space: {1})',
         recoverHelper3:
             'Please ensure the server architecture matches the architecture of the server where the snapshot was created (Current server architecture: {0})',
+        recoverHelper4:
+            'This operation only rolls back the primary node. If any upgraded secondary nodes exist, roll them back first before continuing.',
         rollback: 'Rollback',
         rollbackHelper:
             'Rolling back this recovery will replace all files from this recovery, and may require restarting Docker and 1Panel services. Continue?',

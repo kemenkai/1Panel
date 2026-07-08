@@ -2103,11 +2103,13 @@ const message = {
             ai: 'AI',
             skills_hub: 'Skills Hub',
             ai_proxy: 'AI Proxy',
+            ai_benchmark: 'Benchmark',
             groups: 'Grup',
             hosts: 'Ana Bilgisayar',
             apps: 'Uygulama',
             openresty: 'OpenResty',
             websites: 'Website',
+            monitor: 'Website İzleme',
             containers: 'Konteyner',
             files: 'Dosya',
             runtimes: 'Çalışma Zamanı',
@@ -2126,6 +2128,7 @@ const message = {
             commands: 'Hızlı Komutlar',
             opsReport: 'Operasyon Raporu',
             users: 'Kullanıcı yönetimi',
+            roles: 'Rol',
             auth: 'Giriş kimlik doğrulaması',
             alert: 'Uyarı bildirimleri',
         },
@@ -2946,6 +2949,8 @@ const message = {
             'Sunucuda yeterli disk alanının olduğundan emin olun (Anlık görüntü dosyası boyutu: {0}, Mevcut alan: {1})',
         recoverHelper3:
             'Sunucu mimarisinin, anlık görüntünün oluşturulduğu sunucu mimarisiyle eşleştiğinden emin olun (Geçerli sunucu mimarisi: {0})',
+        recoverHelper4:
+            'Bu işlem yalnızca ana düğümü geri alır. Yükseltilmiş alt düğümler varsa, devam etmeden önce önce bunları geri alın.',
         rollback: 'Geri al',
         rollbackHelper:
             'Bu kurtarmayı geri almak, bu kurtarmadan gelen tüm dosyaları değiştirecek ve Docker ile 1Panel servislerinin yeniden başlatılmasını gerektirebilir. Devam etmek istiyor musunuz?',

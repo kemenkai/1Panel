@@ -2038,11 +2038,13 @@ const message = {
             ai: 'AI',
             skills_hub: 'Skills Hub',
             ai_proxy: 'AI 프록시',
+            ai_benchmark: '벤치마크',
             groups: '그룹',
             hosts: '호스트',
             apps: '애플리케이션',
             openresty: 'OpenResty',
             websites: '웹사이트',
+            monitor: '웹사이트 모니터링',
             containers: '컨테이너',
             files: '파일 관리',
             runtimes: '실행 환경',
@@ -2061,6 +2063,7 @@ const message = {
             commands: '빠른 명령',
             opsReport: '운영 보고서',
             users: '사용자 관리',
+            roles: '역할',
             auth: '로그인 인증',
             alert: '경고 알림',
         },
@@ -2831,6 +2834,8 @@ const message = {
         recoverHelper2: '서버에 충분한 디스크 공간이 있는지 확인하세요. (스냅샷 파일 크기: {0}, 사용 가능한 공간: {1})',
         recoverHelper3:
             '서버 아키텍처가 스냅샷이 생성된 서버의 아키텍처와 일치하는지 확인하세요. (현재 서버 아키텍처: {0})',
+        recoverHelper4:
+            '이 작업은 기본 노드만 롤백합니다. 업그레이드된 하위 노드가 있다면 먼저 하위 노드를 롤백한 후 계속 진행하세요.',
         rollback: '롤백',
         rollbackHelper:
             '이 복구를 롤백하면 해당 복구의 모든 파일이 대체되며 Docker 및 1Panel 서비스를 재시작해야 할 수 있습니다. 계속하시겠습니까?',

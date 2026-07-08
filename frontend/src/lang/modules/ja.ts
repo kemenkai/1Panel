@@ -2080,11 +2080,13 @@ const message = {
             ai: 'AI',
             skills_hub: 'Skills Hub',
             ai_proxy: 'AIプロキシ',
+            ai_benchmark: 'ベンチマーク',
             groups: 'グループ',
             hosts: 'ホスト',
             apps: 'アプリケーション',
             openresty: 'OpenResty',
             websites: 'ウェブサイト',
+            monitor: 'ウェブサイト監視',
             containers: 'コンテナ',
             files: 'ファイル管理',
             runtimes: 'ランタイム',
@@ -2103,6 +2105,7 @@ const message = {
             commands: 'クイックコマンド',
             opsReport: '運用レポート',
             users: 'ユーザー管理',
+            roles: 'ロール',
             auth: 'ログイン認証',
             alert: 'アラート通知',
         },
@@ -2891,6 +2894,8 @@ const message = {
             'サーバーに十分なディスクスペースがあることを確認してください（スナップショットファイルサイズ:{0}、利用可能なスペース:{1}）',
         recoverHelper3:
             'サーバーアーキテクチャが、スナップショットが作成されたサーバーのアーキテクチャと一致していることを確認してください（現在のサーバーアーキテクチャ:{0}）',
+        recoverHelper4:
+            'この操作はプライマリノードのみをロールバックします。アップグレード済みの子ノードがある場合は、先に子ノードをロールバックしてから続行してください。',
         rollback: 'ロールバック',
         rollbackHelper:
             'この回復をロールバックすると、この回復からすべてのファイルを置き換え、Dockerサービスと1パネルサービスを再起動する必要がある場合があります。続けたいですか？',

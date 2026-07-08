@@ -122,6 +122,9 @@ router.beforeEach(async (to, from, next) => {
     if (to.path === '/apps/all' && to.query.install != undefined) {
         return next();
     }
+    if (to.name === 'Expired') {
+        return next();
+    }
     const activeMenuKey = 'cachedRoute' + (to.meta.activeMenu || '');
     const pinEnhanceHome = shouldPinEnhanceHome(to.path, to.meta.activeMenu as string | undefined);
     if (to.query.uncached != undefined) {

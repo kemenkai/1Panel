@@ -13,6 +13,37 @@ $ErrorActionPreference = "Stop"
 $CoreServiceName  = "1panel-core-service"
 $AgentServiceName = "1panel-agent-service"
 
+# Win7 SP1 ships PowerShell 2.0 on the .NET 2.0 CLR. Compute the script dir the
+# PS2 way ($PSScriptRoot is empty in script scope before PS 3.0) and provide a
+# blank test that avoids [string]::IsNullOrWhiteSpace (a .NET 4.0 method).
+$script:ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+function Test-Blank {
+    param([string]$Value)
+    if ($null -eq $Value) { return $true }
+    return ($Value.Trim().Length -eq 0)
+}
+
+function Expand-ZipCompat {
+    param([string]$ZipFile, [string]$DestDir)
+    Ensure-Dir $DestDir
+    if ($null -ne (Get-Command Expand-Archive -ErrorAction SilentlyContinue)) {
+        Expand-Archive -LiteralPath $ZipFile -DestinationPath $DestDir -Force
+        return
+    }
+    # PowerShell 2.0 fallback: extract via the Shell COM object (CopyHere is
+    # async, so wait until the item count settles).
+    $shell = New-Object -ComObject Shell.Application
+    $zipNs = $shell.NameSpace($ZipFile)
+    $dstNs = $shell.NameSpace($DestDir)
+    if ($null -eq $zipNs -or $null -eq $dstNs) { throw "cannot open zip via shell: $ZipFile" }
+    $dstNs.CopyHere($zipNs.Items(), 0x14)
+    for ($i = 0; $i -lt 120; $i++) {
+        Start-Sleep -Milliseconds 500
+        if (Test-Path (Join-Path $DestDir "1panel-core.exe")) { break }
+    }
+}
+
 function Write-Log {
     param([string]$Message)
     Write-Host "[1Panel Upgrade] $Message"
@@ -173,17 +204,17 @@ function Get-PackageVersion {
     )
     # The bare-binary path extracts nothing, so also look next to the script
     # (release packages ship VERSION alongside the binaries and this script).
-    foreach ($dir in @($ExtractDir, $PSScriptRoot)) {
-        if ([string]::IsNullOrWhiteSpace($dir)) { continue }
+    foreach ($dir in @($ExtractDir, $script:ScriptDir)) {
+        if (Test-Blank $dir) { continue }
         $versionFile = Join-Path $dir "VERSION"
         if (Test-Path $versionFile) {
-            $content = (Get-Content -Path $versionFile -Raw).Trim()
-            if (-not [string]::IsNullOrWhiteSpace($content)) {
+            $content = ([System.IO.File]::ReadAllText($versionFile)).Trim()
+            if (-not (Test-Blank $content)) {
                 return $content
             }
         }
     }
-    if (-not [string]::IsNullOrWhiteSpace($ZipFileName)) {
+    if (-not (Test-Blank $ZipFileName)) {
         $m = [regex]::Match($ZipFileName, '^1panel-(.+)-windows-[^-]+\.zip$')
         if ($m.Success) {
             return $m.Groups[1].Value
@@ -289,13 +320,13 @@ function Backup-Current {
 function Resolve-Package {
     param([string]$ExtractDir)
     # Returns a hashtable with Core, Agent, ZipName resolved.
-    $scriptDir = $PSScriptRoot
+    $scriptDir = $script:ScriptDir
     $result = @{ Core = ""; Agent = ""; ZipName = "" }
 
     $localCore  = Join-Path $scriptDir "1panel-core.exe"
     $localAgent = Join-Path $scriptDir "1panel-agent.exe"
 
-    if ([string]::IsNullOrWhiteSpace($ZipPath)) {
+    if (Test-Blank $ZipPath) {
         if ((Test-Path $localCore) -and (Test-Path $localAgent)) {
             $result.Core = $localCore
             $result.Agent = $localAgent
@@ -315,7 +346,7 @@ function Resolve-Package {
     }
     $result.ZipName = [System.IO.Path]::GetFileName($ZipPath)
     Ensure-Dir $ExtractDir
-    Expand-Archive -LiteralPath $ZipPath -DestinationPath $ExtractDir -Force
+    Expand-ZipCompat -ZipFile $ZipPath -DestDir $ExtractDir
     $core = Get-ChildItem -Path $ExtractDir -Filter "1panel-core.exe" -Recurse | Select-Object -First 1
     $agent = Get-ChildItem -Path $ExtractDir -Filter "1panel-agent.exe" -Recurse | Select-Object -First 1
     if ($null -eq $core -or $null -eq $agent) {
@@ -390,7 +421,7 @@ function Invoke-Upgrade {
         Write-Log "===== upgrade summary ====="
         Write-Log "install dir : $Root"
         Write-Log "new version : $newVersion"
-        if ([string]::IsNullOrWhiteSpace($backupDir)) {
+        if (Test-Blank $backupDir) {
             Write-Log "backup dir  : <skipped>"
         } else {
             Write-Log "backup dir  : $backupDir"
@@ -414,8 +445,8 @@ function Invoke-Rollback {
     if (-not (Test-Path $backupRoot)) {
         throw "no backup dir: $backupRoot"
     }
-    $latest = Get-ChildItem -Path $backupRoot -Directory -ErrorAction SilentlyContinue |
-        Sort-Object Name -Descending | Select-Object -First 1
+    $latest = Get-ChildItem -Path $backupRoot -ErrorAction SilentlyContinue |
+        Where-Object { $_.PSIsContainer } | Sort-Object Name -Descending | Select-Object -First 1
     if ($null -eq $latest) {
         throw "no backup found under: $backupRoot"
     }
@@ -462,11 +493,57 @@ function Invoke-Rollback {
     Write-Log "done"
 }
 
+function Test-InstallDir {
+    param([string]$Dir)
+    return ($Dir -and (Test-Path (Join-Path $Dir "bin\1panel-core.exe")))
+}
+
+function Find-InstallDirFromServices {
+    # Derive the install dir from the registered panel services: their binPath
+    # points at the WinSW wrapper (<InstallDir>\service\<name>.exe) or the exe
+    # itself, so walk up from there until we find bin\1panel-core.exe.
+    foreach ($svc in @($CoreServiceName, $AgentServiceName)) {
+        $wmi = Get-WmiObject -Class Win32_Service -Filter "Name='$svc'" -ErrorAction SilentlyContinue
+        if ($null -eq $wmi -or [string]::IsNullOrEmpty($wmi.PathName)) { continue }
+        $raw = $wmi.PathName.Trim()
+        if ($raw.StartsWith('"')) {
+            $end = $raw.IndexOf('"', 1)
+            if ($end -gt 1) { $exe = $raw.Substring(1, $end - 1) } else { $exe = $raw }
+        } else {
+            $exe = ($raw -split '\s+')[0]
+        }
+        $dir = Split-Path $exe -Parent
+        for ($i = 0; $i -lt 4 -and $dir; $i++) {
+            if (Test-InstallDir $dir) { return $dir }
+            $dir = Split-Path $dir -Parent
+        }
+    }
+    return $null
+}
+
 Assert-Administrator
 
-$InstallDir = [System.IO.Path]::GetFullPath($InstallDir.Trim())
-if (-not (Test-Path $InstallDir)) {
-    throw "install dir not found: $InstallDir"
+$explicitInstallDir = $PSBoundParameters.ContainsKey('InstallDir')
+$InstallDir = $InstallDir.Trim()
+if ($InstallDir) {
+    $InstallDir = [System.IO.Path]::GetFullPath($InstallDir)
+}
+
+if (-not (Test-InstallDir $InstallDir) -and -not $explicitInstallDir) {
+    # Default path had no install; try to locate it from the running services
+    # (the panel is often installed on D:\ or a custom drive, not C:\1Panel).
+    $detected = Find-InstallDirFromServices
+    if ($detected) {
+        Write-Log "auto-detected install dir from services: $detected"
+        $InstallDir = $detected
+    }
+}
+
+if (-not (Test-InstallDir $InstallDir)) {
+    if ($explicitInstallDir) {
+        throw "no 1Panel install found at -InstallDir '$InstallDir' (expected bin\1panel-core.exe there)"
+    }
+    throw "could not locate the 1Panel install directory (tried C:\1Panel and the registered services). Re-run with -InstallDir pointing at the folder that contains bin\1panel-core.exe, e.g.:  .\upgrade.ps1 -InstallDir D:\1Panel"
 }
 
 if ($Rollback) {

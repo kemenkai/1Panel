@@ -85,17 +85,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+          {
+            echo "Panel binaries built from \`${GITHUB_REF_NAME}\` @ \`${GITHUB_SHA::8}\`."
+            echo ""
+            echo "| Platform | Asset |"
+            echo "|---|---|"
+            echo "| Linux amd64 | \`1panel-${TAG}-linux-amd64.tar.gz\` |"
+            echo "| Linux arm64 | \`1panel-${TAG}-linux-arm64.tar.gz\` |"
+            echo "| Windows amd64 | \`1panel-${TAG}-windows-amd64.zip\` |"
+            echo ""
+            echo "Each archive contains \`1panel-core\` and \`1panel-agent\`. Verify with \`checksums-${TAG}.txt\`."
+          } > release-notes.md
           gh release create "$TAG" \
             --target "$GITHUB_SHA" \
             --title "1Panel $TAG" \
-            --generate-notes \
-            --notes "Panel binaries built from \`${GITHUB_REF_NAME}\` @ \`${GITHUB_SHA::8}\`.
-
-| Platform | Asset |
-|---|---|
-| Linux amd64 | \`1panel-${TAG}-linux-amd64.tar.gz\` |
-| Linux arm64 | \`1panel-${TAG}-linux-arm64.tar.gz\` |
-| Windows amd64 | \`1panel-${TAG}-windows-amd64.zip\` |
-
-Each archive contains \`1panel-core\` and \`1panel-agent\`. Verify with \`checksums-${TAG}.txt\`." \
+            --notes-file release-notes.md \
             dist/*.tar.gz dist/*.zip "dist/checksums-${TAG}.txt"

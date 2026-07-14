@@ -148,25 +148,25 @@ jobs:
         with:
           name: 1panel-linux-amd64-${{ env.SHORT_SHA }}
           path: dist/1panel-linux-amd64-*.tar.gz
-          retention-days: 14
+          retention-days: 3
 
       - name: Upload linux-arm64
         uses: actions/upload-artifact@v4
         with:
           name: 1panel-linux-arm64-${{ env.SHORT_SHA }}
           path: dist/1panel-linux-arm64-*.tar.gz
-          retention-days: 14
+          retention-days: 3
 
       - name: Upload windows-amd64
         uses: actions/upload-artifact@v4
         with:
           name: 1panel-windows-amd64-${{ env.SHORT_SHA }}
           path: dist/1panel-windows-amd64-*.zip
-          retention-days: 14
+          retention-days: 3
 
       - name: Upload checksums
         uses: actions/upload-artifact@v4
         with:
           name: checksums-${{ env.SHORT_SHA }}
           path: dist/checksums-*.txt
-          retention-days: 14
+          retention-days: 3

@@ -181,7 +181,7 @@ export namespace App {
         message: string;
         httpPort: number;
         container: string;
-        env: { [key: string]: string };
+        env: { [key: string]: any };
         appKey: string;
     }
 
@@ -208,6 +208,8 @@ export namespace App {
         dockerCompose: string;
         app: App.AppDetail;
         linkDB: boolean;
+        resourceKeys?: string[];
+        env?: { [key: string]: any };
     }
 
     export interface AppInstalledOption {
@@ -344,6 +346,7 @@ export namespace App {
         uninstallDeleteImage: string;
         uninstallDeleteBackup: string;
         upgradeBackup: string;
+        upgradeDeleteImage: string;
         installAllowPort: string;
     }
 

@@ -62,6 +62,7 @@
                                     <el-dropdown-item command="ru">Русский</el-dropdown-item>
                                     <el-dropdown-item command="ms">Bahasa Melayu</el-dropdown-item>
                                     <el-dropdown-item command="tr">Turkish</el-dropdown-item>
+                                    <el-dropdown-item command="fa">فارسی</el-dropdown-item>
                                 </el-dropdown-menu>
                             </template>
                         </el-dropdown>
@@ -120,6 +121,7 @@
                                     <el-dropdown-item command="ru">Русский</el-dropdown-item>
                                     <el-dropdown-item command="ms">Bahasa Melayu</el-dropdown-item>
                                     <el-dropdown-item command="tr">Turkish</el-dropdown-item>
+                                    <el-dropdown-item command="fa">فارسی</el-dropdown-item>
                                 </el-dropdown-menu>
                             </template>
                         </el-dropdown>
@@ -275,6 +277,7 @@ const {
     isOffline,
     isOnRestart,
     openMenuTabs,
+    menuAccordion,
     themeConfig,
 } = useGlobalStore();
 const menuStore = MenuStore();
@@ -385,6 +388,7 @@ const languageLabelMap: Record<string, string> = {
     ms: 'Bahasa Melayu',
     tr: 'Turkish',
     'es-ES': 'España - Español',
+    fa: 'فارسی',
 };
 
 const handleCommand = async (command: string) => {
@@ -652,6 +656,7 @@ const getSetting = async () => {
         document.title = res.data.panelName;
         i18n.warnHtmlMessage = false;
         openMenuTabs.value = res.data.menuTabs === 'Enable';
+        menuAccordion.value = res.data.menuAccordion === 'Enable';
         themeConfig.value = { ...themeConfig.value, theme: res.data.theme, panelName: res.data.panelName };
 
         if (res.data.passkeySetting && !isIntl.value && !isFxplay.value) {

@@ -338,11 +338,37 @@ const checkAlias: RuleValidator = (_rule, value, callback) => {
         callback(new Error(i18n.global.t('commons.rule.alias')));
         return;
     }
-    const reg = /^(?![-_])[A-Za-z0-9._-]{1,128}(?<![-_])$/;
+    const reg = /^(?![-_])[A-Za-z0-9._-]{0,126}[A-Za-z0-9.]$/;
     if (!reg.test(value)) {
         callback(new Error(i18n.global.t('commons.rule.alias')));
     } else {
         callback();
+    }
+};
+
+const checkVMName: RuleValidator = (_rule, value, callback) => {
+    if (value === '' || typeof value === 'undefined' || value == null) {
+        callback(new Error(i18n.global.t('commons.rule.vmName')));
+    } else {
+        const reg = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/;
+        if (!reg.test(value)) {
+            callback(new Error(i18n.global.t('commons.rule.vmName')));
+        } else {
+            callback();
+        }
+    }
+};
+
+const checkVMNetwork: RuleValidator = (_rule, value, callback) => {
+    if (value === '' || typeof value === 'undefined' || value == null) {
+        callback(new Error(i18n.global.t('commons.rule.vmNetwork')));
+    } else {
+        const reg = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,63}$/;
+        if (!reg.test(value)) {
+            callback(new Error(i18n.global.t('commons.rule.vmNetwork')));
+        } else {
+            callback();
+        }
     }
 };
 
@@ -697,6 +723,8 @@ interface CommonRule {
     paramSimple: FormItemRule;
     paramHttp: FormItemRule;
     phone: FormItemRule;
+    vmName: FormItemRule;
+    vmNetwork: FormItemRule;
 }
 
 export const Rules: CommonRule = {
@@ -944,5 +972,15 @@ export const Rules: CommonRule = {
         required: true,
         validator: checkAlias,
         trigger: 'blur',
+    },
+    vmName: {
+        required: true,
+        validator: checkVMName,
+        trigger: 'blur',
+    },
+    vmNetwork: {
+        required: true,
+        validator: checkVMNetwork,
+        trigger: ['blur', 'change'],
     },
 };

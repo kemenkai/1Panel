@@ -4,9 +4,9 @@
             <el-card class="form-card">
                 <el-form-item :label="`${$t('aiTools.agents.agent')}${$t('commons.table.type')}`" prop="agentType">
                     <el-select v-model="form.agentType" @change="handleAgentTypeChange">
-                        <el-option :label="$t('aiTools.agents.openclawType')" value="openclaw" />
-                        <el-option :label="$t('aiTools.agents.hermesType')" value="hermes-agent" />
-                        <el-option :label="$t('aiTools.agents.copawType')" value="copaw" />
+                        <el-option label="OpenClaw" value="openclaw" />
+                        <el-option label="Hermes Agent" value="hermes-agent" />
+                        <el-option label="QwenPaw" value="copaw" />
                     </el-select>
                 </el-form-item>
                 <el-form-item :label="$t('commons.table.name')" prop="name">
@@ -23,6 +23,20 @@
                 <el-form-item :label="$t('aiTools.agents.webuiPort')" prop="webUIPort">
                     <el-input-number v-model="form.webUIPort" :min="1" :max="65535" />
                 </el-form-item>
+                <template v-if="form.agentType === 'hermes-agent'">
+                    <el-form-item :label="$t('commons.login.username')" prop="dashboardUsername">
+                        <el-input v-model="form.dashboardUsername" />
+                    </el-form-item>
+                    <el-form-item :label="$t('commons.login.password')" prop="dashboardPassword">
+                        <div class="password-row">
+                            <el-input v-model="form.dashboardPassword" type="password" show-password />
+                            <CopyButton :content="form.dashboardPassword" />
+                            <el-button type="primary" plain @click="generateDashboardPassword">
+                                {{ $t('commons.button.random') }}
+                            </el-button>
+                        </div>
+                    </el-form-item>
+                </template>
                 <el-form-item
                     v-if="form.agentType === 'openclaw'"
                     :label="$t('aiTools.agents.allowedOrigins')"
@@ -152,6 +166,8 @@ const form = reactive({
     model: '',
     baseURL: '',
     token: '',
+    dashboardUsername: 'admin',
+    dashboardPassword: '',
     advanced: true,
     containerName: '',
     allowPort: true,
@@ -166,6 +182,22 @@ const form = reactive({
 });
 
 const showModelConfig = computed(() => form.agentType === 'openclaw' || form.agentType === 'hermes-agent');
+
+const generateDashboardPassword = () => {
+    form.dashboardPassword = getRandomStr(8);
+};
+
+const ensureHermesDashboardAuth = () => {
+    if (form.agentType !== 'hermes-agent') {
+        return;
+    }
+    if (!form.dashboardUsername) {
+        form.dashboardUsername = 'admin';
+    }
+    if (!form.dashboardPassword) {
+        generateDashboardPassword();
+    }
+};
 
 const setDefaultWebUIPort = () => {
     if (form.agentType === 'copaw') {
@@ -201,6 +233,8 @@ const rules = reactive({
     provider: [Rules.requiredSelect],
     accountId: [Rules.requiredSelect],
     model: [Rules.requiredInput],
+    dashboardUsername: [Rules.requiredInput],
+    dashboardPassword: [Rules.requiredInput],
     containerName: [Rules.containerName],
     restartPolicy: [Rules.requiredSelect],
     cpuQuota: [checkNumberRange(0, 99999)],
@@ -376,6 +410,7 @@ const handleAgentTypeChange = async () => {
     form.provider = '';
     form.accountId = undefined as unknown as number;
     form.baseURL = '';
+    ensureHermesDashboardAuth();
     if (form.agentType === 'openclaw') {
         await loadSystemIP();
         allowedOriginsAutoFilled.value = true;
@@ -451,6 +486,8 @@ const submit = async () => {
             model: showModelConfig.value ? form.model : undefined,
             accountId: showModelConfig.value ? form.accountId : undefined,
             token: form.agentType === 'openclaw' ? form.token : undefined,
+            dashboardUsername: form.agentType === 'hermes-agent' ? form.dashboardUsername : undefined,
+            dashboardPassword: form.agentType === 'hermes-agent' ? form.dashboardPassword : undefined,
             taskID: taskID,
             advanced: form.advanced,
             containerName: form.containerName,
@@ -481,6 +518,8 @@ const submit = async () => {
 const handleClose = () => {
     formRef.value?.resetFields();
     form.token = '';
+    form.dashboardUsername = 'admin';
+    form.dashboardPassword = '';
     form.remark = '';
     form.allowedOrigins = '';
     form.dockerCompose = '';
@@ -496,6 +535,7 @@ const openDrawer = async (agentType?: AI.AgentType) => {
     form.agentType = targetType;
     setDefaultWebUIPort();
     form.token = getRandomStr(32).toLowerCase();
+    ensureHermesDashboardAuth();
     if (form.agentType === 'copaw') {
         form.allowedOrigins = '';
         lastAutoAllowedOrigins.value = '';
@@ -582,6 +622,17 @@ defineExpose({
     height: auto;
     line-height: inherit;
     font-size: inherit;
+}
+
+.password-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.password-row .el-input {
+    flex: 1;
 }
 
 .option-row {

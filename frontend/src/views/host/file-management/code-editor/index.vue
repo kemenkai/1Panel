@@ -9,7 +9,12 @@
     >
         <template #header>
             <div ref="dialogHeader" class="flex items-center justify-between code-header px-4 rounded-t">
-                <span class="truncate-text">{{ $t('home.dir') + ' - ' + form.path }}</span>
+                <div class="code-title">
+                    <span class="truncate-text">{{ $t('home.dir') + ' - ' + currentEditorPath }}</span>
+                    <el-tooltip v-if="currentEditorPath" :content="$t('file.copyDir')" placement="top">
+                        <CopyButton class="code-title-copy" :content="currentEditorPath" />
+                    </el-tooltip>
+                </div>
                 <el-space alignment="center" :size="1" class="dialog-header-icon">
                     <el-tooltip :content="loadTooltip()" placement="top">
                         <el-button
@@ -100,175 +105,217 @@
                 </div>
             </div>
             <div v-loading="loading">
-                <div class="flex">
-                    <div
-                        class="monaco-editor sm:w-48 w-1/3 monaco-editor-background border-0 tree-container"
-                        v-if="isShow"
+                <el-splitter
+                    class="code-splitter"
+                    :style="{ height: splitterHeight }"
+                    layout="horizontal"
+                    lazy
+                    @collapse="handleSplitterCollapse"
+                    @resize-end="handleSplitterResizeEnd"
+                >
+                    <el-splitter-panel
+                        v-model:size="treePanelSize"
+                        :min="isShow ? minTreePanelSize : 0"
+                        :max="maxTreePanelSize"
+                        :resizable="isShow"
+                        collapsible
+                        class="code-tree-panel"
+                        :class="{ 'is-collapsed': !isShow }"
+                        @update:size="handleTreePanelSizeChange"
                     >
-                        <div class="flex items-center justify-between px-1 h-7">
-                            <el-text size="small" @click="getUpData()" class="cursor-pointer">
-                                <el-icon>
-                                    <Top />
-                                </el-icon>
-                                <span class="sm:inline hidden pl-1">{{ $t('file.up') }}</span>
-                            </el-text>
-                            <el-divider direction="vertical" class="!mx-0" />
-                            <el-text size="small" @click="getRefresh(directoryPath)" class="cursor-pointer">
-                                <el-icon>
-                                    <Refresh />
-                                </el-icon>
-                                <span class="sm:inline hidden pl-1">{{ $t('commons.button.refresh') }}</span>
-                            </el-text>
-                            <el-divider direction="vertical" v-if="!isMobile" class="!mx-0" />
-                            <el-dropdown @command="handleCreate" v-if="!isMobile" trigger="click">
-                                <el-text size="small">
-                                    {{ $t('commons.button.create') }}
-                                    <el-icon><arrow-down /></el-icon>
+                        <div v-show="isShow" class="monaco-editor monaco-editor-background border-0 tree-container">
+                            <div class="flex items-center justify-between px-1 h-7">
+                                <el-text size="small" @click="getUpData()" class="cursor-pointer">
+                                    <el-icon>
+                                        <Top />
+                                    </el-icon>
+                                    <span class="sm:inline hidden pl-1">{{ $t('file.up') }}</span>
                                 </el-text>
-                                <template #dropdown>
-                                    <el-dropdown-menu>
-                                        <fu-dropdown-item v-permission v-node-admin command="dir" class="!px-2">
-                                            <svg-icon class="!w-5 !h-5" iconName="p-file-folder"></svg-icon>
-                                            {{ $t('file.dir') }}
-                                        </fu-dropdown-item>
-                                        <fu-dropdown-item v-permission v-node-admin command="file" class="!px-2">
-                                            <svg-icon class="!w-5 !h-5" iconName="p-file-normal"></svg-icon>
-                                            {{ $t('menu.files') }}
-                                        </fu-dropdown-item>
-                                    </el-dropdown-menu>
-                                </template>
-                            </el-dropdown>
-                        </div>
-                        <el-divider class="!my-0" />
-                        <el-tree-v2
-                            ref="treeRef"
-                            :data="treeData"
-                            :props="treeProps"
-                            @node-expand="handleNodeExpand"
-                            @node-collapse="handleNodeCollapse"
-                            class="monaco-editor-tree monaco-editor-background pt-2"
-                            :height="treeHeight"
-                            :indent="6"
-                            :item-size="26"
-                            highlight-current
-                        >
-                            <template #default="{ node, data }">
-                                <span v-if="data.isDir" style="align-items: center">
-                                    <template v-if="isCreate == 'dir' && data.id == 'new-dir'">
-                                        <div class="flex justify-between items-center gap-0.5 pr-2">
+                                <el-divider direction="vertical" class="!mx-0" />
+                                <el-text size="small" @click="getRefresh(directoryPath)" class="cursor-pointer">
+                                    <el-icon>
+                                        <Refresh />
+                                    </el-icon>
+                                    <span class="sm:inline hidden pl-1">{{ $t('commons.button.refresh') }}</span>
+                                </el-text>
+                                <el-divider direction="vertical" v-if="!isMobile" class="!mx-0" />
+                                <el-dropdown @command="handleCreate" v-if="!isMobile" trigger="click">
+                                    <el-text size="small">
+                                        {{ $t('commons.button.create') }}
+                                        <el-icon><arrow-down /></el-icon>
+                                    </el-text>
+                                    <template #dropdown>
+                                        <el-dropdown-menu>
+                                            <fu-dropdown-item v-permission v-node-admin command="dir" class="!px-2">
+                                                <svg-icon class="!w-5 !h-5" iconName="p-file-folder"></svg-icon>
+                                                {{ $t('file.dir') }}
+                                            </fu-dropdown-item>
+                                            <fu-dropdown-item v-permission v-node-admin command="file" class="!px-2">
+                                                <svg-icon class="!w-5 !h-5" iconName="p-file-normal"></svg-icon>
+                                                {{ $t('menu.files') }}
+                                            </fu-dropdown-item>
+                                        </el-dropdown-menu>
+                                    </template>
+                                </el-dropdown>
+                            </div>
+                            <el-divider class="!my-0" />
+                            <el-tree-v2
+                                ref="treeRef"
+                                :data="treeData"
+                                :props="treeProps"
+                                @node-expand="handleNodeExpand"
+                                @node-collapse="handleNodeCollapse"
+                                @node-click="closeTreeContextMenu"
+                                @node-contextmenu="openTreeContextMenu"
+                                class="monaco-editor-tree monaco-editor-background pt-2"
+                                :default-expanded-keys="expandedNodeKeys"
+                                :height="treeHeight"
+                                :indent="6"
+                                :item-size="26"
+                                highlight-current
+                            >
+                                <template #default="{ node, data }">
+                                    <span v-if="data.isDir" class="tree-node-content">
+                                        <template v-if="isCreate == 'dir' && data.id == 'new-dir'">
+                                            <div class="tree-node-editing">
+                                                <svg-icon class="table-icon" iconName="p-file-folder"></svg-icon>
+                                                <el-input
+                                                    size="small"
+                                                    class="!flex-1 !min-w-0"
+                                                    ref="rowRefs"
+                                                    v-model="newFolder"
+                                                ></el-input>
+                                                <el-icon
+                                                    class="cursor-pointer w-4 pl-1"
+                                                    size="small"
+                                                    @click.stop="createFolder(true)"
+                                                >
+                                                    <Check />
+                                                </el-icon>
+                                                <el-icon
+                                                    class="cursor-pointer w-4"
+                                                    size="small"
+                                                    @click.stop="cancelFolder()"
+                                                >
+                                                    <Close />
+                                                </el-icon>
+                                            </div>
+                                        </template>
+                                        <template v-else>
                                             <svg-icon class="table-icon" iconName="p-file-folder"></svg-icon>
-                                            <el-input
-                                                size="small"
-                                                class="!flex-1 !min-w-16"
-                                                ref="rowRefs"
-                                                v-model="newFolder"
-                                            ></el-input>
-                                            <el-icon
-                                                class="cursor-pointer w-4 pl-1"
-                                                size="small"
-                                                @click.stop="createFolder(true)"
-                                            >
-                                                <Check />
-                                            </el-icon>
-                                            <el-icon
-                                                class="cursor-pointer w-4"
-                                                size="small"
-                                                @click.stop="cancelFolder()"
-                                            >
-                                                <Close />
-                                            </el-icon>
-                                        </div>
-                                    </template>
-                                    <template v-else>
-                                        <svg-icon class="table-icon" iconName="p-file-folder"></svg-icon>
-                                        <small :title="node.label" class="min-w-32">{{ node.label }}</small>
-                                    </template>
-                                </span>
-                                <span
-                                    v-else
-                                    style="display: inline-flex; align-items: center"
-                                    @click="getContent(data.path)"
-                                >
-                                    <template v-if="isCreate == 'file' && data.id == 'new-file'">
-                                        <div class="flex justify-between items-center gap-0.5 pr-2">
+                                            <small :title="node.label" class="tree-node-label">{{ node.label }}</small>
+                                        </template>
+                                    </span>
+                                    <span v-else class="tree-node-content" @click="getContent(data.path)">
+                                        <template v-if="isCreate == 'file' && data.id == 'new-file'">
+                                            <div class="tree-node-editing">
+                                                <svg-icon
+                                                    class="table-icon"
+                                                    :iconName="getIconName(data.extension)"
+                                                ></svg-icon>
+                                                <el-input
+                                                    size="small"
+                                                    ref="rowRefs"
+                                                    class="!flex-1 !min-w-0"
+                                                    v-model="newFolder"
+                                                ></el-input>
+                                                <el-icon
+                                                    class="cursor-pointer w-4 pl-1"
+                                                    size="small"
+                                                    @click.stop="createFolder(false)"
+                                                >
+                                                    <Check />
+                                                </el-icon>
+                                                <el-icon
+                                                    class="cursor-pointer w-4"
+                                                    size="small"
+                                                    @click.stop="cancelFolder()"
+                                                >
+                                                    <Close />
+                                                </el-icon>
+                                            </div>
+                                        </template>
+                                        <template v-else>
                                             <svg-icon
-                                                class="table-icon w-4"
+                                                class="table-icon"
                                                 :iconName="getIconName(data.extension)"
                                             ></svg-icon>
-                                            <el-input
-                                                size="small"
-                                                ref="rowRefs"
-                                                class="!flex-1 !min-w-16"
-                                                v-model="newFolder"
-                                            ></el-input>
-                                            <el-icon
-                                                class="cursor-pointer w-4 pl-1"
-                                                size="small"
-                                                @click.stop="createFolder(false)"
-                                            >
-                                                <Check />
-                                            </el-icon>
-                                            <el-icon
-                                                class="cursor-pointer w-4"
-                                                size="small"
-                                                @click.stop="cancelFolder()"
-                                            >
-                                                <Close />
-                                            </el-icon>
-                                        </div>
-                                    </template>
-                                    <template v-else>
-                                        <svg-icon class="table-icon" :iconName="getIconName(data.extension)"></svg-icon>
-                                        <small :title="node.label" class="min-w-32">{{ node.label }}</small>
-                                    </template>
-                                </span>
-                            </template>
-                        </el-tree-v2>
-                    </div>
-                    <div class="relative">
-                        <el-divider
-                            v-if="isShow"
-                            direction="vertical"
-                            style="height: 100%; width: 0"
-                            class="!m-0 p-0"
-                            :class="isShow ? 'opacity-100' : 'opacity-0'"
-                        ></el-divider>
-                    </div>
-                    <div class="flex-1 sm:w-4/5 w-2/3 relative">
-                        <CodeTabs
-                            class="monaco-editor monaco-editor-background"
-                            :select-tab="selectTab"
-                            :file-tabs="fileTabs"
-                            :on-remove-tab="removeTab"
-                            :on-change-tab="changeTab"
-                            :on-remove-all-tab="removeAllTab"
-                            :on-remove-other-tab="removeOtherTab"
-                        ></CodeTabs>
-                        <div ref="codeBox" class="relative" :style="{ height: codeHeight }">
-                            <div class="absolute top-1/3">
-                                <el-icon
-                                    v-if="isShow"
-                                    class="cursor-pointer bg-gray-100 py-2 rounded-l-sm block -left-[9px]"
-                                    size="9"
-                                    @click="toggleShow"
+                                            <small :title="node.label" class="tree-node-label">{{ node.label }}</small>
+                                        </template>
+                                    </span>
+                                </template>
+                            </el-tree-v2>
+                            <div
+                                v-if="treeContextMenu.visible"
+                                class="tree-context-menu"
+                                :style="{ left: `${treeContextMenu.x}px`, top: `${treeContextMenu.y}px` }"
+                                @click.stop
+                                @contextmenu.prevent
+                            >
+                                <div
+                                    v-if="treeContextMenu.data?.isDir"
+                                    v-permission
+                                    v-node-admin
+                                    class="tree-context-menu__item"
+                                    @click="createFromContextMenu('dir')"
                                 >
-                                    <DArrowLeft />
-                                </el-icon>
-                                <el-icon
-                                    v-else
-                                    class="cursor-pointer bg-gray-100 py-2 rounded-r-sm block z-50"
-                                    size="9"
-                                    @click="toggleShow"
+                                    <svg-icon class="tree-context-menu__icon" iconName="p-file-folder"></svg-icon>
+                                    <span>{{ $t('file.dir') }}</span>
+                                </div>
+                                <div
+                                    v-if="treeContextMenu.data?.isDir"
+                                    v-permission
+                                    v-node-admin
+                                    class="tree-context-menu__item"
+                                    @click="createFromContextMenu('file')"
                                 >
-                                    <DArrowRight />
-                                </el-icon>
-                            </div>
-                            <div class="flex justify-center items-center h-full" v-if="fileTabs.length === 0">
-                                <el-empty :image="noUpdateImage" />
+                                    <svg-icon class="tree-context-menu__icon" iconName="p-file-normal"></svg-icon>
+                                    <span>{{ $t('menu.files') }}</span>
+                                </div>
+                                <div class="tree-context-menu__item" @click="copyPathFromContextMenu">
+                                    <el-icon class="tree-context-menu__icon"><CopyDocument /></el-icon>
+                                    <span>{{ $t('file.copyDir') }}</span>
+                                </div>
+                                <div
+                                    v-permission
+                                    v-node-admin
+                                    class="tree-context-menu__item"
+                                    @click="renameFromContextMenu"
+                                >
+                                    <el-icon class="tree-context-menu__icon"><Edit /></el-icon>
+                                    <span>{{ $t('file.rename') }}</span>
+                                </div>
+                                <div
+                                    v-permission
+                                    v-node-admin
+                                    class="tree-context-menu__item is-danger"
+                                    @click="deleteFromContextMenu"
+                                >
+                                    <el-icon class="tree-context-menu__icon"><Delete /></el-icon>
+                                    <span>{{ $t('commons.button.delete') }}</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </div>
+                    </el-splitter-panel>
+                    <el-splitter-panel min="240" class="code-editor-panel">
+                        <div class="code-editor-panel__inner relative">
+                            <CodeTabs
+                                class="monaco-editor monaco-editor-background"
+                                :select-tab="selectTab"
+                                :file-tabs="fileTabs"
+                                :on-remove-tab="removeTab"
+                                :on-change-tab="changeTab"
+                                :on-remove-all-tab="removeAllTab"
+                                :on-remove-other-tab="removeOtherTab"
+                            ></CodeTabs>
+                            <div ref="codeBox" class="code-box relative">
+                                <div class="flex justify-center items-center h-full" v-if="fileTabs.length === 0">
+                                    <el-empty :image="noUpdateImage" />
+                                </div>
+                            </div>
+                        </div>
+                    </el-splitter-panel>
+                </el-splitter>
                 <div
                     class="hidden code-footer pl-4 h-7 sm:flex justify-end items-center gap-4 rounded-b"
                     ref="dialogFooter"
@@ -396,15 +443,17 @@
 import {
     batchCheckFiles,
     createFile,
+    deleteFile,
     getFileContent,
     getFilesTree,
+    renameRile,
     saveFileContent,
     searchFileHistory,
 } from '@/api/modules/files';
 import i18n from '@/lang';
 import { MsgError, MsgSuccess, MsgWarning } from '@/utils/message';
 import { loadMonacoLanguageSupport, setupMonacoEnvironment } from '@/utils/monaco';
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { Languages } from '@/global/mimetype';
 import { resolveEditorLanguage } from '@/utils/file';
 import { hasManagePermissionAccess } from '@/utils/permission';
@@ -413,17 +462,24 @@ import type { TabPaneName } from 'element-plus';
 import { ElMessageBox, ElTreeV2 } from 'element-plus';
 import { ResultData } from '@/api/interface';
 import { File } from '@/api/interface/file';
+import { copyText } from '@/utils/clipboard';
 import { getIcon } from '@/utils/file';
 import { newUUID } from '@/utils/id';
 import { TreeNodeData } from 'element-plus/es/components/tree-v2/src/types';
-import { DArrowLeft, DArrowRight, Refresh, Top } from '@element-plus/icons-vue';
+import { CopyDocument, Delete, Edit, Refresh, Top } from '@element-plus/icons-vue';
 import { loadBaseDir } from '@/api/modules/setting';
 import CodeTabs from './tabs/index.vue';
 import FileHistoryDrawer from './history/index.vue';
 import noUpdateImage from '@/assets/images/no_update_app.svg';
 import { useGlobalStore } from '@/composables/useGlobalStore';
+import {
+    CodeEditorTheme,
+    codeEditorThemeStorageKey,
+    getDefaultCodeEditorTheme,
+    resolveCodeEditorTheme,
+} from '@/utils/code-editor-theme';
 
-const { isMobile } = useGlobalStore();
+const { isDarkTheme, isMobile } = useGlobalStore();
 
 type MonacoEditorApi = typeof import('monaco-editor/esm/vs/editor/editor.api');
 
@@ -486,7 +542,7 @@ interface EditProps {
 }
 
 interface EditorConfig {
-    theme: string;
+    theme: CodeEditorTheme;
     language: string;
     eol: number;
     wordWrap: WordWrapOptions;
@@ -539,7 +595,7 @@ const revealPendingInitialLine = () => {
 const open = ref(false);
 const loading = ref(false);
 const fileName = ref('');
-const codeThemeKey = 'code-theme';
+const codeThemeKey = codeEditorThemeStorageKey;
 const warpKey = 'code-warp';
 const minimapKey = 'code-minimap';
 const directoryPath = ref('');
@@ -549,9 +605,14 @@ const treeData = ref([]);
 const codeBox = ref();
 const defaultHeight = ref(56);
 const treeHeight = ref(0);
-const codeHeight = ref('56vh');
+const splitterHeight = ref('56vh');
 const codeReq = reactive({ path: '', expand: false, page: 1, pageSize: 100 });
 const isShow = ref(true);
+const defaultTreePanelSize = 220;
+const minTreePanelSize = 160;
+const maxTreePanelSize = 420;
+const treePanelSize = ref(defaultTreePanelSize);
+const lastTreePanelSize = ref(defaultTreePanelSize);
 const isEdit = ref(false);
 const oldFileContent = ref('');
 const dialogHeader = ref(null);
@@ -564,10 +625,59 @@ const rowRefs = ref();
 const isCreate = ref('none');
 const newFolder = ref();
 const selectedParentNode = ref(null);
-const expandedNodeIds = ref(new Set());
+const expandedNodeIds = ref<Set<string>>(new Set());
+const expandedNodeKeys = computed<string[]>(() => Array.from(expandedNodeIds.value));
 
-const toggleShow = () => {
-    isShow.value = !isShow.value;
+const addExpandedNode = (id: string) => {
+    expandedNodeIds.value.add(id);
+};
+
+const removeExpandedNode = (id: string) => {
+    expandedNodeIds.value.delete(id);
+};
+
+const resetExpandedNodes = () => {
+    expandedNodeIds.value = new Set<string>();
+};
+
+const refreshEditorLayout = () => {
+    nextTick(() => {
+        editor?.layout();
+    });
+};
+
+const syncTreePanelState = (size: number) => {
+    const nextSize = Math.max(size, 0);
+    treePanelSize.value = nextSize;
+    isShow.value = nextSize > 0;
+    if (nextSize > 0) {
+        lastTreePanelSize.value = nextSize;
+    }
+    closeTreeContextMenu();
+    refreshEditorLayout();
+};
+
+const handleTreePanelSizeChange = (size: string | number) => {
+    const nextSize = Number(size);
+    if (Number.isNaN(nextSize)) {
+        return;
+    }
+    syncTreePanelState(nextSize);
+};
+
+const handleSplitterResizeEnd = () => {
+    refreshEditorLayout();
+};
+
+const handleSplitterCollapse = (index: number, type: 'start' | 'end', sizes: number[]) => {
+    if (index !== 0 || !type) {
+        return;
+    }
+    const nextSize = sizes[0] || 0;
+    syncTreePanelState(nextSize > 0 ? nextSize : 0);
+    if (!nextSize && lastTreePanelSize.value < minTreePanelSize) {
+        lastTreePanelSize.value = defaultTreePanelSize;
+    }
 };
 
 type WordWrapOptions = 'off' | 'on' | 'wordWrapColumn' | 'bounded';
@@ -782,6 +892,7 @@ let form = ref({
     content: '',
     path: '',
 });
+const currentEditorPath = computed(() => form.value.path || directoryPath.value || '');
 
 const em = defineEmits(['close']);
 
@@ -837,6 +948,8 @@ onMounted(() => {
     loadPath();
     updateHeights();
     window.addEventListener('resize', updateHeights);
+    document.addEventListener('click', closeTreeContextMenu);
+    window.addEventListener('scroll', closeTreeContextMenu, true);
 });
 
 const updateHeights = () => {
@@ -846,14 +959,14 @@ const updateHeights = () => {
         const headerHeight = dialogHeader.value.offsetHeight;
         const formHeight = dialogForm.value.offsetHeight;
         const footerHeight = dialogFooter.value.offsetHeight;
-        treeHeight.value = window.innerHeight - headerHeight - formHeight - footerHeight - paddingHeight - 31;
-        codeHeight.value = `${
-            ((window.innerHeight - headerHeight - formHeight - footerHeight - paddingHeight) / window.innerHeight) * 100
-        }vh`;
+        const contentHeight = window.innerHeight - headerHeight - formHeight - footerHeight - paddingHeight;
+        treeHeight.value = contentHeight - 31;
+        splitterHeight.value = `${contentHeight}px`;
     } else {
+        splitterHeight.value = `${defaultHeight.value}vh`;
         treeHeight.value = defaultHeight.value * vh - 31;
-        codeHeight.value = `${defaultHeight.value}vh`;
     }
+    refreshEditorLayout();
 };
 
 const toggleFullscreen = () => {
@@ -873,29 +986,45 @@ const changeLanguage = (command: string) => {
     monacoApi.editor.setModelLanguage(model, config.language);
 };
 
-const changeTheme = (command: string) => {
+const applyCodeEditorTheme = (theme: CodeEditorTheme, persist = false) => {
+    config.theme = theme;
     if (!monacoApi) {
         return;
     }
-    config.theme = command;
     monacoApi.editor.setTheme(config.theme);
-    const themes = {
+    applyTreeThemeClass();
+    if (persist) {
+        localStorage.setItem(codeThemeKey, config.theme);
+    }
+};
+
+const changeTheme = (command: string) => {
+    applyCodeEditorTheme(resolveCodeEditorTheme(command, isDarkTheme.value), true);
+};
+
+const applyTreeThemeClass = () => {
+    const themes: Record<CodeEditorTheme, string> = {
         vs: 'monaco-editor-tree-light',
         'vs-dark': 'monaco-editor-tree-dark',
         'hc-black': 'monaco-editor-tree-dark',
     };
 
-    if (treeRef.value) {
-        Object.values(themes).forEach((themeClass) => {
-            treeRef.value.$el.classList.remove(themeClass);
-        });
-        if (themes[config.theme]) {
-            treeRef.value.$el.classList.add(themes[config.theme]);
-        }
+    if (!treeRef.value) {
+        return;
     }
-
-    localStorage.setItem(codeThemeKey, config.theme);
+    Object.values(themes).forEach((themeClass) => {
+        treeRef.value.$el.classList.remove(themeClass);
+    });
+    treeRef.value.$el.classList.add(themes[config.theme]);
 };
+
+const syncDefaultThemeWithPanelTheme = () => {
+    const nextTheme = getDefaultCodeEditorTheme(isDarkTheme.value);
+    localStorage.removeItem(codeThemeKey);
+    applyCodeEditorTheme(nextTheme);
+};
+
+watch(isDarkTheme, syncDefaultThemeWithPanelTheme);
 
 const changeEOL = (command: number) => {
     if (!editor) {
@@ -949,8 +1078,11 @@ const initEditor = async () => {
     }
 
     editor.getModel()?.pushEOL(config.eol);
+    applyTreeThemeClass();
 
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, quickSave);
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash, quickToggleComment);
+    editor.focus();
 
     editor.onDidChangeModelContent(() => {
         if (editor) {
@@ -964,6 +1096,10 @@ const initEditor = async () => {
 
 const quickSave = () => {
     saveContent();
+};
+
+const quickToggleComment = () => {
+    void editor?.getAction('editor.action.commentLine')?.run();
 };
 
 const openHistoryDrawer = () => {
@@ -1068,7 +1204,7 @@ const acceptParams = async (props: EditProps) => {
         config.language = props.language;
     }
     config.eol = monaco.editor.EndOfLineSequence.LF;
-    config.theme = localStorage.getItem(codeThemeKey) || 'vs-dark';
+    config.theme = resolveCodeEditorTheme(localStorage.getItem(codeThemeKey), isDarkTheme.value);
     config.wordWrap = (localStorage.getItem(warpKey) as WordWrapOptions) || 'on';
     config.minimap = localStorage.getItem(minimapKey) !== null ? localStorage.getItem(minimapKey) === 'true' : true;
     open.value = true;
@@ -1114,13 +1250,14 @@ const getDirectoryPath = (filePath: string) => {
 
 const onOpen = async () => {
     await initEditor();
-    changeTheme(config.theme);
+    applyCodeEditorTheme(config.theme);
     search(directoryPath.value).then((res) => {
         handleSearchResult(res);
     });
 };
 
 const handleSearchResult = (res: ResultData<File.FileTree[]>) => {
+    resetExpandedNodes();
     if (res.data.length > 0 && res.data[0].children) {
         treeData.value = res.data[0].children.map((item) => ({
             ...item,
@@ -1137,6 +1274,7 @@ const getRefresh = (path: string) => {
         search(path).then((res) => {
             treeData.value = res.data[0].children;
             loadedNodes.value = new Set();
+            resetExpandedNodes();
             isCreate.value = 'none';
             currentPath.value = path;
             selectedParentNode.value = null;
@@ -1250,6 +1388,7 @@ const getUpData = async () => {
         const response = await search(newPath);
         treeData.value = response.data[0]?.children || [];
         loadedNodes.value = new Set();
+        resetExpandedNodes();
         isCreate.value = 'none';
         currentPath.value = newPath;
         selectedParentNode.value = null;
@@ -1261,15 +1400,49 @@ const getUpData = async () => {
 
 const treeRef = ref<InstanceType<typeof ElTreeV2>>();
 
+const treeContextMenu = reactive<{
+    visible: boolean;
+    x: number;
+    y: number;
+    data: any | null;
+    node: any | null;
+}>({
+    visible: false,
+    x: 0,
+    y: 0,
+    data: null,
+    node: null,
+});
+
 const treeProps = {
     value: 'id',
     label: 'name',
     children: 'children',
 };
 
+const closeTreeContextMenu = () => {
+    treeContextMenu.visible = false;
+    treeContextMenu.data = null;
+    treeContextMenu.node = null;
+};
+
+const openTreeContextMenu = (event: MouseEvent, data: any, node: any) => {
+    if (isMobile.value || data.id === 'new-dir' || data.id === 'new-file') {
+        return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    treeContextMenu.visible = true;
+    treeContextMenu.x = event.clientX;
+    treeContextMenu.y = event.clientY;
+    treeContextMenu.data = data;
+    treeContextMenu.node = node;
+};
+
 const handleNodeCollapse = (data: TreeNodeData, node: any) => {
+    closeTreeContextMenu();
     isCreate.value = 'none';
-    expandedNodeIds.value.delete(data.id);
+    removeExpandedNode(data.id);
 
     const parentNode = node.parent;
     if (!parentNode) {
@@ -1287,6 +1460,7 @@ const handleNodeCollapse = (data: TreeNodeData, node: any) => {
 };
 
 const handleNodeExpand = (data: TreeNodeData, node: any) => {
+    closeTreeContextMenu();
     if (node.data.id == 'new-dir' || node.data.id == 'new-file') {
         return;
     }
@@ -1296,7 +1470,7 @@ const handleNodeExpand = (data: TreeNodeData, node: any) => {
     if (node.data.isDir && isCreate.value == 'none') {
         currentPath.value = node.data.path;
         selectedParentNode.value = node;
-        expandedNodeIds.value.add(node.data.id);
+        addExpandedNode(node.data.id);
     }
     search(data.path)
         .then((response) => {
@@ -1313,6 +1487,50 @@ const handleNodeExpand = (data: TreeNodeData, node: any) => {
         .catch(() => {});
 };
 
+const getChildItems = (res: ResultData<File.FileTree[]>) => {
+    return res.data.length > 0 && res.data[0].children ? res.data[0].children : [];
+};
+
+const loadDirectoryChildren = async (data: any, node: any) => {
+    currentPath.value = data.path;
+    selectedParentNode.value = node;
+    addExpandedNode(data.id);
+    if (loadedNodes.value.has(data.path)) {
+        return;
+    }
+    const response = await search(data.path);
+    const children = getChildItems(response);
+    node.children = children;
+    node.data.children = children;
+    updateNodeChildren(treeData.value, data.path, children);
+    treeData.value = [...treeData.value];
+    loadedNodes.value.add(data.path);
+};
+
+const createFromContextMenu = async (command: string) => {
+    const data = treeContextMenu.data;
+    const node = treeContextMenu.node;
+    closeTreeContextMenu();
+    if (!data?.isDir || !node) {
+        return;
+    }
+    try {
+        await loadDirectoryChildren(data, node);
+        handleCreate(command);
+    } catch {
+        MsgError(i18n.global.t('commons.status.failed'));
+    }
+};
+
+const copyPathFromContextMenu = () => {
+    const path = treeContextMenu.data?.path;
+    closeTreeContextMenu();
+    if (!path) {
+        return;
+    }
+    copyText(path);
+};
+
 const updateNodeChildren = (nodes: any[], path: any, newChildren: File.FileTree[]) => {
     const updateNode = (nodes: string | any[]) => {
         for (const element of nodes) {
@@ -1326,6 +1544,179 @@ const updateNodeChildren = (nodes: any[], path: any, newChildren: File.FileTree[
         }
     };
     updateNode(nodes);
+};
+
+const joinPath = (dir: string, name: string) => {
+    if (dir === '/') {
+        return `/${name}`;
+    }
+    return `${dir}/${name}`;
+};
+
+const isPathAffected = (path: string, targetPath: string, targetIsDir: boolean) => {
+    return path === targetPath || (targetIsDir && path.startsWith(`${targetPath}/`));
+};
+
+const replaceAffectedPath = (path: string, oldPath: string, newPath: string, isDir: boolean) => {
+    if (path === oldPath) {
+        return newPath;
+    }
+    if (isDir && path.startsWith(`${oldPath}/`)) {
+        return `${newPath}${path.slice(oldPath.length)}`;
+    }
+    return path;
+};
+
+const renameTreeNodePaths = (nodes: any[], oldPath: string, newPath: string, newName: string, isDir: boolean) => {
+    for (const node of nodes) {
+        if (node.path === oldPath) {
+            node.name = newName;
+        }
+        node.path = replaceAffectedPath(node.path, oldPath, newPath, isDir);
+        if (node.children?.length) {
+            renameTreeNodePaths(node.children, oldPath, newPath, newName, isDir);
+        }
+    }
+};
+
+const removeTreeNodeByPath = (nodes: any[], targetPath: string, targetIsDir: boolean) => {
+    return nodes
+        .filter((node) => !isPathAffected(node.path, targetPath, targetIsDir))
+        .map((node) => {
+            if (node.children?.length) {
+                node.children = removeTreeNodeByPath(node.children, targetPath, targetIsDir);
+            }
+            return node;
+        });
+};
+
+const syncTabsAfterRename = (oldPath: string, newPath: string, newName: string, isDir: boolean) => {
+    const isCurrentFileRenamed = form.value.path === oldPath;
+    if (currentPath.value && isPathAffected(currentPath.value, oldPath, isDir)) {
+        currentPath.value = replaceAffectedPath(currentPath.value, oldPath, newPath, isDir);
+    }
+    if (directoryPath.value && isPathAffected(directoryPath.value, oldPath, isDir)) {
+        directoryPath.value = replaceAffectedPath(directoryPath.value, oldPath, newPath, isDir);
+    }
+    loadedNodes.value = new Set(
+        Array.from(loadedNodes.value).map((path) => replaceAffectedPath(String(path), oldPath, newPath, isDir)),
+    );
+    fileTabs.value = fileTabs.value.map((tab) => {
+        if (!isPathAffected(tab.path, oldPath, isDir)) {
+            return tab;
+        }
+        const nextPath = replaceAffectedPath(tab.path, oldPath, newPath, isDir);
+        return {
+            ...tab,
+            path: nextPath,
+            name: tab.path === oldPath ? newName : tab.name,
+        };
+    });
+    if (selectTab.value && isPathAffected(selectTab.value, oldPath, isDir)) {
+        selectTab.value = replaceAffectedPath(selectTab.value, oldPath, newPath, isDir);
+    }
+    if (form.value.path && isPathAffected(form.value.path, oldPath, isDir)) {
+        form.value.path = replaceAffectedPath(form.value.path, oldPath, newPath, isDir);
+        if (isCurrentFileRenamed) {
+            fileName.value = newName;
+        }
+    }
+    saveTabsToStorage();
+};
+
+const closeTabsAfterDelete = (targetPath: string, targetIsDir: boolean) => {
+    const removedCurrent = selectTab.value && isPathAffected(selectTab.value, targetPath, targetIsDir);
+    fileTabs.value = fileTabs.value.filter((tab) => !isPathAffected(tab.path, targetPath, targetIsDir));
+    if (!removedCurrent) {
+        saveTabsToStorage();
+        return;
+    }
+    isEdit.value = false;
+    const nextTab = fileTabs.value[fileTabs.value.length - 1];
+    if (nextTab) {
+        selectTab.value = nextTab.path;
+        getContent(nextTab.path, true);
+    } else {
+        selectTab.value = '';
+        form.value.content = '';
+        form.value.path = '';
+        oldFileContent.value = '';
+        fileName.value = '';
+        fileExtension.value = '';
+        historyVersionCount.value = 0;
+        disposeEditor();
+    }
+    saveTabsToStorage();
+};
+
+const renameFromContextMenu = async () => {
+    const data = treeContextMenu.data;
+    closeTreeContextMenu();
+    if (!data) {
+        return;
+    }
+    try {
+        const res = await ElMessageBox.prompt(i18n.global.t('file.rename'), i18n.global.t('file.rename'), {
+            inputValue: data.name,
+            confirmButtonText: i18n.global.t('commons.button.confirm'),
+            cancelButtonText: i18n.global.t('commons.button.cancel'),
+            inputValidator: (value) => !!value?.trim(),
+        });
+        const newName = String(res.value || '').trim();
+        if (!newName || newName === data.name) {
+            return;
+        }
+        const oldPath = data.path;
+        const parentPath = getDirectoryPath(oldPath);
+        const newPath = joinPath(parentPath, newName);
+        loading.value = true;
+        await renameRile({ oldName: oldPath, newName: newPath });
+        renameTreeNodePaths(treeData.value, oldPath, newPath, newName, data.isDir);
+        treeData.value = [...treeData.value];
+        syncTabsAfterRename(oldPath, newPath, newName, data.isDir);
+        loadedNodes.value.delete(oldPath);
+        loadedNodes.value.delete(newPath);
+        MsgSuccess(i18n.global.t('commons.msg.updateSuccess'));
+    } finally {
+        loading.value = false;
+    }
+};
+
+const deleteFromContextMenu = async () => {
+    const data = treeContextMenu.data;
+    closeTreeContextMenu();
+    if (!data) {
+        return;
+    }
+    try {
+        await ElMessageBox.confirm(
+            i18n.global.t(data.isDir ? 'file.deleteHelper' : 'file.deleteHelper2'),
+            i18n.global.t('commons.button.delete'),
+            {
+                confirmButtonText: i18n.global.t('commons.button.delete'),
+                cancelButtonText: i18n.global.t('commons.button.cancel'),
+                type: 'warning',
+            },
+        );
+        loading.value = true;
+        await deleteFile({ path: data.path, isDir: data.isDir, forceDelete: false });
+        closeTabsAfterDelete(data.path, data.isDir);
+        treeData.value = removeTreeNodeByPath(treeData.value, data.path, data.isDir);
+        loadedNodes.value.delete(data.path);
+        loadedNodes.value.delete(getDirectoryPath(data.path));
+        if (
+            selectedParentNode.value &&
+            isPathAffected(selectedParentNode.value.data?.path || '', data.path, data.isDir)
+        ) {
+            selectedParentNode.value = null;
+        }
+        if (currentPath.value && isPathAffected(currentPath.value, data.path, data.isDir)) {
+            currentPath.value = getDirectoryPath(data.path);
+        }
+        MsgSuccess(i18n.global.t('commons.msg.deleteSuccess'));
+    } finally {
+        loading.value = false;
+    }
 };
 
 const currentEditingNode = ref<any>(null);
@@ -1350,6 +1741,17 @@ const removeExistingNode = (data: any[], command: string) => {
     return data;
 };
 
+const getRawNodeChildren = (node: any) => {
+    if (!node?.data) {
+        return [];
+    }
+    if (!Array.isArray(node.data.children)) {
+        node.data.children = [];
+    }
+    node.data.children = node.data.children.map((child) => (child?.data?.path ? child.data : child));
+    return node.data.children;
+};
+
 const handleCreate = (command: string) => {
     removeExistingNode(treeData.value, command);
     if ((command === 'dir' && isCreate.value === 'file') || (command === 'file' && isCreate.value === 'dir')) {
@@ -1363,11 +1765,9 @@ const handleCreate = (command: string) => {
     newFolder.value = newFileNode.name;
     currentEditingNode.value = newFileNode;
     if (selectedParentNode.value) {
-        if (!selectedParentNode.value.children) {
-            selectedParentNode.value.children = [];
-        }
-        selectedParentNode.value.children.unshift(newFileNode);
-        updateNodeChildren(treeData.value, selectedParentNode.value.data.path, selectedParentNode.value.children);
+        const children = getRawNodeChildren(selectedParentNode.value);
+        children.unshift(newFileNode);
+        updateNodeChildren(treeData.value, selectedParentNode.value.data.path, children);
         treeData.value = [...treeData.value];
     } else {
         treeData.value = [newFileNode, ...treeData.value];
@@ -1399,13 +1799,10 @@ const cancelFolder = () => {
     const targetId = isCreate.value == 'dir' ? 'new-dir' : 'new-file';
     isCreate.value = 'none';
     newFolder.value = '';
-    if (selectedParentNode.value && selectedParentNode.value.children.length > 0) {
-        selectedParentNode.value.children = selectedParentNode.value.children.filter((node) => node.id !== targetId);
-        if (selectedParentNode.value.data?.children?.length > 0) {
-            selectedParentNode.value.data.children = selectedParentNode.value.data.children.filter(
-                (node) => node.id !== targetId,
-            );
-        }
+    if (selectedParentNode.value) {
+        selectedParentNode.value.data.children = getRawNodeChildren(selectedParentNode.value).filter(
+            (node) => node.id !== targetId,
+        );
     }
     treeData.value = filterNodes(treeData.value, targetId);
     loadedNodes.value.delete(currentPath.value);
@@ -1450,6 +1847,8 @@ onBeforeUnmount(() => {
     currentPath.value = '';
     selectedParentNode.value = null;
     window.removeEventListener('resize', updateHeights);
+    document.removeEventListener('click', closeTreeContextMenu);
+    window.removeEventListener('scroll', closeTreeContextMenu, true);
 });
 
 defineExpose({ acceptParams });
@@ -1462,6 +1861,7 @@ defineExpose({ acceptParams });
 
 .dialog-header-icon {
     color: var(--el-color-info);
+    flex-shrink: 0;
 }
 
 .monaco-editor-tree {
@@ -1473,16 +1873,115 @@ defineExpose({ acceptParams });
     background-color: var(--vscode-editor-background) !important;
 }
 
+.code-splitter {
+    width: 100%;
+    min-width: 0;
+    background-color: var(--vscode-editor-background);
+}
+
+.code-splitter :deep(.el-splitter-bar__horizontal-collapse-icon-start),
+.code-splitter :deep(.el-splitter-bar__horizontal-collapse-icon-end) {
+    top: 33%;
+}
+
+.code-tree-panel,
+.code-editor-panel {
+    min-width: 0;
+    background-color: var(--vscode-editor-background);
+}
+
+.code-tree-panel.is-collapsed {
+    overflow: hidden;
+}
+
+.code-editor-panel__inner,
+.tree-container {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+.code-editor-panel__inner {
+    display: flex;
+    flex-direction: column;
+}
+
+.code-box {
+    min-height: 0;
+    flex: 1;
+}
+
+:deep(.code-splitter .el-splitter-panel) {
+    min-width: 0;
+}
+
+:deep(.code-splitter .el-splitter-bar) {
+    width: 1px;
+    background-color: var(--el-border-color-light);
+}
+
+:deep(.code-splitter .el-splitter-bar__dragger-horizontal::before) {
+    width: 1px;
+    background-color: var(--el-border-color-light);
+}
+
 .tree-widget {
     background-color: var(--el-button--primary);
 }
 
+.tree-context-menu {
+    position: fixed;
+    z-index: 3000;
+    min-width: 148px;
+    padding: 4px;
+    border: 1px solid var(--el-border-color-light);
+    border-radius: 4px;
+    background: var(--el-bg-color-overlay);
+    box-shadow: var(--el-box-shadow-light);
+}
+
+.tree-context-menu__item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 30px;
+    padding: 0 8px;
+    border-radius: 3px;
+    color: var(--el-text-color-primary);
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.tree-context-menu__item:hover {
+    background: var(--el-fill-color-light);
+}
+
+.tree-context-menu__item.is-danger {
+    color: var(--el-color-danger);
+}
+
+.tree-context-menu__icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+}
+
 .truncate-text {
-    display: inline-block;
-    max-width: 800px;
+    display: block;
+    min-width: 0;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+.code-title {
+    display: inline-flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    margin-right: 8px;
+}
+.code-title-copy {
+    flex-shrink: 0;
 }
 .code-header {
     background-color: var(--panel-code-header-footer-color);
@@ -1511,8 +2010,32 @@ defineExpose({ acceptParams });
     width: 1.35em;
     height: 1.35em;
     position: relative;
+    flex-shrink: 0;
     fill: currentColor;
     vertical-align: middle;
+}
+
+.tree-node-content {
+    display: inline-flex;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+}
+
+.tree-node-editing {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    width: 100%;
+    min-width: 0;
+    padding-right: 8px;
+}
+
+.tree-node-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 :deep(.el-tabs) {

@@ -7,7 +7,7 @@
                         v-model="formData.domainName"
                         @keyup.enter.prevent="saveEdit"
                         @blur="saveEdit"
-                        @keyup.esc="cancelEdit"
+                        @keydown.esc="cancelEdit"
                         class="domain-input"
                         ref="inputRef"
                     />

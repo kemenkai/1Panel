@@ -21,13 +21,14 @@ type RuntimeCreate struct {
 	Source      string `json:"source"`
 	CodeDir     string `json:"codeDir"`
 	Remark      string `json:"remark"`
+	TaskID      string `json:"taskID"`
 
 	Params map[string]interface{} `json:"params"`
 	NodeConfig
 }
 
 type NodeConfig struct {
-	Install      bool          `json:"install"`
+	Install      *bool         `json:"install"`
 	Clean        bool          `json:"clean"`
 	ExposedPorts []ExposedPort `json:"exposedPorts"`
 	Environments []Environment `json:"environments"`
@@ -42,12 +43,14 @@ type Environment struct {
 type Volume struct {
 	Source string `json:"source"`
 	Target string `json:"target"`
+	Mode   string `json:"mode"`
 }
 
 type ExposedPort struct {
 	HostPort      int    `json:"hostPort"`
 	ContainerPort int    `json:"containerPort"`
 	HostIP        string `json:"hostIP"`
+	Protocol      string `json:"protocol"`
 }
 
 type ExtraHost struct {
@@ -56,8 +59,10 @@ type ExtraHost struct {
 }
 
 type RuntimeDelete struct {
-	ID          uint `json:"id"`
-	ForceDelete bool `json:"forceDelete"`
+	ID          uint   `json:"id"`
+	ForceDelete bool   `json:"forceDelete"`
+	DeleteImage bool   `json:"deleteImage"`
+	TaskID      string `json:"taskID"`
 }
 
 type RuntimeUpdate struct {

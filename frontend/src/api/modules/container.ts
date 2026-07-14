@@ -115,13 +115,18 @@ export const inspect = (params: Container.ContainerInspect) => {
 export const DownloadFile = (params: Container.ContainerLogInfo) => {
     return http.download<BlobPart>('/containers/download/log', params, {
         responseType: 'blob',
-        timeout: TimeoutEnum.T_60S,
+        timeout: TimeoutEnum.T_5M,
     });
 };
 
 // image
-export const searchImage = (params: Container.ImageSearch) => {
-    return http.post<ResPage<Container.ImageInfo>>(`/containers/image/search`, params);
+export const searchImage = (params: Container.ImageSearch, currentNode?: string) => {
+    return http.post<ResPage<Container.ImageInfo>>(
+        `/containers/image/search`,
+        params,
+        TimeoutEnum.T_60S,
+        currentNode ? { CurrentNode: currentNode } : undefined,
+    );
 };
 export const listAllImage = () => {
     return http.get<Array<Container.ImageInfo>>(`/containers/image/all`);

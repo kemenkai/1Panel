@@ -33,6 +33,9 @@
                     <el-option v-if="hasPnpm" label="pnpm" value="pnpm"></el-option>
                 </el-select>
             </el-form-item>
+            <el-form-item :label="$t('commons.button.install') + ' node_modules'" prop="install">
+                <el-switch v-model="runtime.install" />
+            </el-form-item>
             <el-form-item :label="$t('runtime.imageSource')" prop="source">
                 <el-select v-model="runtime.source" filterable allow-create default-first-option>
                     <el-option
@@ -70,6 +73,7 @@ import { Runtime } from '@/api/interface/runtime';
 import { CreateRuntime, GetRuntime, UpdateRuntime } from '@/api/modules/runtime';
 import { Rules, checkNumberRange } from '@/global/form-rules';
 import i18n from '@/lang';
+import { newUUID } from '@/utils/id';
 import { MsgError, MsgSuccess } from '@/utils/message';
 import { FormInstance } from 'element-plus';
 import { computed, reactive, ref, watch } from 'vue';
@@ -97,6 +101,7 @@ const initData = (type: string) => ({
     type: type,
     resource: 'appstore',
     rebuild: false,
+    install: true,
     codeDir: '/',
     port: 4004,
     source: 'https://registry.npmjs.org/',
@@ -120,7 +125,7 @@ const rules = ref<any>({
         CONTAINER_NAME: [Rules.requiredInput, Rules.containerName],
     },
 });
-const em = defineEmits(['close']);
+const em = defineEmits(['close', 'submit']);
 
 const hasPnpm = computed(() => {
     if (runtime.version == undefined) {
@@ -167,28 +172,34 @@ const submit = async (formEl: FormInstance | undefined) => {
             return;
         }
         if (runtime.exposedPorts && runtime.exposedPorts.length > 0) {
-            const containerPortMap = new Map();
-            const hostPortMap = new Map();
+            const containerPortMap = new Map<string, boolean>();
+            const hostPortMap = new Map<string, boolean>();
             for (const port of runtime.exposedPorts) {
-                if (containerPortMap[port.containerPort]) {
+                const protocol = port.protocol || 'tcp';
+                const containerPortKey = `${port.containerPort}/${protocol}`;
+                const hostPortKey = `${port.hostPort}/${protocol}`;
+                if (containerPortMap.has(containerPortKey)) {
                     MsgError(i18n.global.t('runtime.portError'));
                     return;
                 }
-                if (hostPortMap[port.hostPort]) {
+                if (hostPortMap.has(hostPortKey)) {
                     MsgError(i18n.global.t('runtime.portError'));
                     return;
                 }
-                hostPortMap[port.hostPort] = true;
-                containerPortMap[port.containerPort] = true;
+                hostPortMap.set(hostPortKey, true);
+                containerPortMap.set(containerPortKey, true);
             }
         }
 
         if (mode.value == 'create') {
             loading.value = true;
+            const taskID = newUUID();
+            runtime.taskID = taskID;
             CreateRuntime(runtime)
                 .then(() => {
                     MsgSuccess(i18n.global.t('commons.msg.createSuccess'));
                     handleClose();
+                    em('submit', taskID);
                 })
                 .finally(() => {
                     loading.value = false;
@@ -226,6 +237,7 @@ const getRuntime = async (id: number) => {
             codeDir: data.codeDir,
             port: data.port,
             remark: data.remark,
+            install: data.params['RUN_INSTALL'] !== '0',
         });
         runtime.exposedPorts = data.exposedPorts || [];
         runtime.environments = data.environments || [];

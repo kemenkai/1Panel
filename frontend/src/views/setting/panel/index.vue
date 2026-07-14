@@ -209,6 +209,7 @@ import HideMenu from '@/views/setting/panel/hidemenu/index.vue';
 import { getXpackProxyDocker } from '@/extensions/xpack';
 import { getXpackSetting, updateXpackSettingByKey } from '@/utils/xpack';
 import { setPrimaryColor } from '@/utils/theme';
+import { codeEditorThemeStorageKey } from '@/utils/code-editor-theme';
 import i18n from '@/lang';
 
 const {
@@ -217,6 +218,7 @@ const {
     isIntl,
     isMobile,
     isXpackOrEE,
+    menuAccordion,
     openMenuTabs,
     themeConfig,
     watermark,
@@ -243,6 +245,7 @@ const form = reactive({
     watermarkShow: '',
     themeColor: {} as ThemeColor,
     menuTabs: '',
+    menuAccordion: '',
     language: '',
     sessionTimeout: 0,
     docSource: 'withByRegion',
@@ -285,6 +288,7 @@ const languageOptions = ref([
     { value: 'ms', label: 'Bahasa Melayu' },
     { value: 'tr', label: 'Turkish' },
     { value: 'es-ES', label: 'España - Español' },
+    { value: 'fa', label: 'فارسی' },
 ]);
 
 if (isIntl.value) {
@@ -298,6 +302,8 @@ const search = async () => {
     const res = await getSettingInfo();
     form.theme = res.data.theme;
     form.menuTabs = res.data.menuTabs;
+    form.menuAccordion = res.data.menuAccordion || 'Disable';
+    menuAccordion.value = form.menuAccordion === 'Enable';
     form.panelName = res.data.panelName;
     form.language = res.data.language;
     form.sessionTimeout = Number(res.data.sessionTimeout || 0);
@@ -363,7 +369,10 @@ const onChangeProxy = () => {
 };
 
 const onChangeHideMenus = () => {
-    hideMenuRef.value.acceptParams({ hideMenu: form.hideMenu });
+    hideMenuRef.value.acceptParams({
+        hideMenu: form.hideMenu,
+        menuAccordion: form.menuAccordion,
+    });
 };
 
 const onChangeRegion = () => {
@@ -410,6 +419,7 @@ const onChangeWatermark = async () => {
 };
 
 const handleThemeChange = async (val: string) => {
+    localStorage.removeItem(codeEditorThemeStorageKey);
     themeConfig.value.theme = val;
     switchTheme();
     if (isXpackOrEE.value) {
@@ -440,6 +450,9 @@ const onSave = async (key: string, val: any) => {
                 break;
             case 'MenuTabs':
                 openMenuTabs.value = val === 'Enable';
+                break;
+            case 'MenuAccordion':
+                menuAccordion.value = val === 'Enable';
                 break;
             case 'Language':
                 await globalStore.updateLanguage(val);

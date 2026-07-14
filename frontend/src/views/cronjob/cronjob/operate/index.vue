@@ -64,6 +64,12 @@
                                         {{ $t('firewall.quickJump') }}
                                     </el-link>
                                 </span>
+                                <span class="input-help logText" v-if="form.type === 'syncIpGroup'">
+                                    {{ $t('cronjob.syncIpGroupHelper') }}
+                                    <el-link class="link" icon="Position" @click="goWafIpGroup" type="primary">
+                                        {{ $t('firewall.quickJump') }}
+                                    </el-link>
+                                </span>
                             </el-form-item>
                             <el-row :gutter="20">
                                 <LayoutCol>
@@ -346,13 +352,7 @@
                                         </el-select>
                                     </el-form-item>
                                 </LayoutCol>
-                                <LayoutCol
-                                    :span="20"
-                                    v-if="
-                                        form.type === 'database' &&
-                                        (form.dbType === 'mysql' || form.dbType === 'mysql-cluster')
-                                    "
-                                >
+                                <LayoutCol :span="20" v-if="form.type === 'database' && supportMysqlBackupArgs()">
                                     <el-form-item :label="$t('cronjob.backupArgs')">
                                         <el-select v-model="form.argItems" filterable allow-create multiple>
                                             <el-option
@@ -1149,6 +1149,11 @@ const goRouter = async (path: string) => {
     routerToPath(path);
 };
 
+const goWafIpGroup = async () => {
+    localStorage.setItem('black-white-tab', '3');
+    routerToPath('/xpack/waf/blackwhite');
+};
+
 const containerOptions = ref([]);
 const websiteOptions = ref([]);
 const backupOptions = ref([]);
@@ -1403,6 +1408,9 @@ const isDir = () => {
 };
 const isDatabase = () => {
     return form.type === 'database';
+};
+const supportMysqlBackupArgs = () => {
+    return ['mysql', 'mysql-cluster', 'mariadb'].includes(form.dbType);
 };
 
 const loadNext = async (spec: any) => {

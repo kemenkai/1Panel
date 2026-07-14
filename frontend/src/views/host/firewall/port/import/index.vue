@@ -62,7 +62,10 @@
                 <el-button @click="visible = false">
                     {{ $t('commons.button.cancel') }}
                 </el-button>
-                <el-button type="primary" :disabled="selects.length === 0" @click="onImport">
+                <el-button type="primary" plain :disabled="displayData.length === 0" @click="onImportAll">
+                    {{ $t('commons.button.importAll') }}
+                </el-button>
+                <el-button type="primary" :disabled="selects.length === 0" @click="() => onImport()">
                     {{ $t('commons.button.import') }}
                 </el-button>
             </span>
@@ -71,7 +74,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref } from 'vue';
+import { reactive, ref } from 'vue';
 import { genFileId, UploadFile, UploadFiles, UploadProps, UploadRawFile } from 'element-plus';
 import { MsgError, MsgSuccess } from '@/utils/message';
 import i18n from '@/lang';
@@ -87,7 +90,7 @@ const displayData = ref<any>([]);
 const currentRules = ref<Host.RuleInfo[]>([]);
 
 const uploadRef = ref();
-const uploaderFiles = ref();
+const uploaderFiles = ref<UploadFiles>([]);
 const pageData = ref([]);
 const paginationConfig = reactive({
     currentPage: 1,
@@ -96,11 +99,21 @@ const paginationConfig = reactive({
 });
 
 const acceptParams = async (): Promise<void> => {
+    resetImportData();
     visible.value = true;
-    displayData.value = [];
-    selects.value = [];
 
     loadCurrentData();
+};
+
+const resetImportData = () => {
+    loading.value = false;
+    displayData.value = [];
+    pageData.value = [];
+    selects.value = [];
+    uploaderFiles.value = [];
+    paginationConfig.currentPage = 1;
+    paginationConfig.total = 0;
+    uploadRef.value?.clearFiles();
 };
 
 const loadCurrentData = async () => {
@@ -175,29 +188,37 @@ const checkDataFormat = (item: any): boolean => {
     return true;
 };
 
+const normalizeRuleAddress = (address?: string): string => {
+    const normalized = (address || '').trim();
+    return normalized.toLowerCase() === 'anywhere' ? '' : normalized;
+};
+
 const compareRules = (importedRules: any[]) => {
     const newRules: any[] = [];
     const conflictRules: any[] = [];
     const duplicateRules: any[] = [];
 
     for (const importedRule of importedRules) {
-        const key = `${importedRule.address || 'Anywhere'}:${importedRule.port}:${importedRule.protocol}`;
+        const normalizedAddress = normalizeRuleAddress(importedRule.address);
+        const normalizedRule = { ...importedRule, address: normalizedAddress };
+        const key = `${normalizedAddress || 'Anywhere'}:${importedRule.port}:${importedRule.protocol}`;
 
         const existingRule = currentRules.value.find((rule) => {
-            const existingKey = `${rule.address || 'Anywhere'}:${rule.port}:${rule.protocol}`;
+            const existingAddress = normalizeRuleAddress(rule.address);
+            const existingKey = `${existingAddress || 'Anywhere'}:${rule.port}:${rule.protocol}`;
             return existingKey === key;
         });
 
         if (!existingRule) {
-            newRules.push({ ...importedRule, status: 'new' });
+            newRules.push({ ...normalizedRule, status: 'new' });
         } else if (existingRule.strategy !== importedRule.strategy) {
             conflictRules.push({
-                ...importedRule,
+                ...normalizedRule,
                 status: 'conflict',
                 existingStrategy: existingRule.strategy,
             });
         } else {
-            duplicateRules.push({ ...importedRule, status: 'duplicate' });
+            duplicateRules.push({ ...normalizedRule, status: 'duplicate' });
         }
     }
 
@@ -206,16 +227,20 @@ const compareRules = (importedRules: any[]) => {
     search();
 };
 
-const onImport = async () => {
+const onImportAll = async () => {
+    await onImport(displayData.value);
+};
+
+const onImport = async (rules = selects.value) => {
     loading.value = true;
     let successCount = 0;
     let errorCount = 0;
 
-    for (const rule of selects.value) {
+    for (const rule of rules) {
         try {
             const params: Host.RulePort = {
                 operation: 'add',
-                address: rule.address || 'Anywhere',
+                address: normalizeRuleAddress(rule.address),
                 port: rule.port,
                 source: '',
                 protocol: rule.protocol,

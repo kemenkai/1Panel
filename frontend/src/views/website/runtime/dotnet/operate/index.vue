@@ -49,6 +49,7 @@ import { Runtime } from '@/api/interface/runtime';
 import { CreateRuntime, GetRuntime, UpdateRuntime } from '@/api/modules/runtime';
 import { Rules, checkNumberRange } from '@/global/form-rules';
 import i18n from '@/lang';
+import { newUUID } from '@/utils/id';
 import { MsgError, MsgSuccess } from '@/utils/message';
 import { FormInstance } from 'element-plus';
 import { reactive, ref, watch } from 'vue';
@@ -97,7 +98,7 @@ const rules = ref<any>({
     },
 });
 const scripts = ref<Runtime.NodeScripts[]>([]);
-const em = defineEmits(['close']);
+const em = defineEmits(['close', 'submit']);
 
 watch(
     () => runtime.name,
@@ -122,28 +123,34 @@ const submit = async (formEl: FormInstance | undefined) => {
             return;
         }
         if (runtime.exposedPorts && runtime.exposedPorts.length > 0) {
-            const containerPortMap = new Map();
-            const hostPortMap = new Map();
+            const containerPortMap = new Map<string, boolean>();
+            const hostPortMap = new Map<string, boolean>();
             for (const port of runtime.exposedPorts) {
-                if (containerPortMap[port.containerPort]) {
+                const protocol = port.protocol || 'tcp';
+                const containerPortKey = `${port.containerPort}/${protocol}`;
+                const hostPortKey = `${port.hostPort}/${protocol}`;
+                if (containerPortMap.has(containerPortKey)) {
                     MsgError(i18n.global.t('runtime.portError'));
                     return;
                 }
-                if (hostPortMap[port.hostPort]) {
+                if (hostPortMap.has(hostPortKey)) {
                     MsgError(i18n.global.t('runtime.portError'));
                     return;
                 }
-                hostPortMap[port.hostPort] = true;
-                containerPortMap[port.containerPort] = true;
+                hostPortMap.set(hostPortKey, true);
+                containerPortMap.set(containerPortKey, true);
             }
         }
 
         if (mode.value == 'create') {
             loading.value = true;
+            const taskID = newUUID();
+            runtime.taskID = taskID;
             CreateRuntime(runtime)
                 .then(() => {
                     MsgSuccess(i18n.global.t('commons.msg.createSuccess'));
                     handleClose();
+                    em('submit', taskID);
                 })
                 .finally(() => {
                     loading.value = false;

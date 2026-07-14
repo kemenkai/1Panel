@@ -187,7 +187,10 @@ var WebUrlMap = map[string]struct{}{
 	"/xpack/node/dashboard":  {},
 	"/xpack/node":            {},
 	"/xpack/simple-node":     {},
-	"/xpack/exchange/file":   {},
+	"/xpack/sync/file":       {},
+	"/xpack/sync/image":      {},
+	"/xpack/sync/ssl":        {},
+	"/xpack/sync/app":        {},
 	"/xpack/app":             {},
 	"/xpack/app-upgrade":     {},
 
@@ -209,6 +212,11 @@ var WebUrlMap = map[string]struct{}{
 	"/enterprise/ops-report/alert":    {},
 	"/enterprise/ops-report/history":  {},
 	"/enterprise/ops-report/settings": {},
+	"/enterprise/vm/list":             {},
+	"/enterprise/vm/isos":             {},
+	"/enterprise/vm/templates":        {},
+	"/enterprise/vm/networks":         {},
+	"/enterprise/vm/storage-pools":    {},
 }
 
 var DynamicRoutes = []string{

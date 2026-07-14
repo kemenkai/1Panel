@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -31,7 +32,6 @@ import (
 	"github.com/1Panel-dev/1Panel/agent/utils/cmd"
 	"github.com/1Panel-dev/1Panel/agent/utils/common"
 	"github.com/1Panel-dev/1Panel/agent/utils/docker"
-	"github.com/1Panel-dev/1Panel/agent/utils/re"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/build"
 	"github.com/docker/docker/api/types/container"
@@ -51,6 +51,8 @@ import (
 )
 
 type ContainerService struct{}
+
+var containerLogAnsiRegex = regexp.MustCompile("\x1b\\[[0-9;?]*[A-Za-z]|\x1b=|\x1b>")
 
 type IContainerService interface {
 	Page(req dto.PageContainer) (int64, interface{}, error)
@@ -1031,6 +1033,7 @@ func (u *ContainerService) DownloadContainerLogs(containerType, container, since
 	if cmd.CheckIllegal(container, since, tail) {
 		return buserr.New("ErrCmdIllegal")
 	}
+	ctx := c.Request.Context()
 	commandArg := []string{"logs", container}
 	dockerCommand := global.CONF.DockerConfig.Command
 	if containerType == "compose" {
@@ -1060,10 +1063,13 @@ func (u *ContainerService) DownloadContainerLogs(containerType, container, since
 	}
 	var dockerCmd *exec.Cmd
 	if containerType == "compose" && dockerCommand == "docker-compose" {
-		dockerCmd = exec.Command("docker-compose", commandArg...)
+		dockerCmd = exec.CommandContext(ctx, "docker-compose", commandArg...)
 	} else {
-	dockerCmd = exec.Command("docker", commandArg...)
+		dockerCmd = exec.CommandContext(ctx, "docker", commandArg...)
 	}
+	// process-group setup lives in the build-tagged helper so this file
+	// still cross-compiles for the Windows agent
+	configureLongRunningCommand(dockerCmd)
 	stdout, err := dockerCmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -1072,15 +1078,20 @@ func (u *ContainerService) DownloadContainerLogs(containerType, container, since
 	if err := dockerCmd.Start(); err != nil {
 		return err
 	}
-	defer func() {
-		if dockerCmd.Process != nil {
-			_ = dockerCmd.Process.Kill()
-			_ = dockerCmd.Wait()
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			killContainerLogProcess(dockerCmd)
+		case <-done:
 		}
 	}()
+	defer close(done)
 
 	tempFile, err := os.CreateTemp("", "cmd_output_*.txt")
 	if err != nil {
+		killContainerLogProcess(dockerCmd)
+		_ = dockerCmd.Wait()
 		return err
 	}
 	defer tempFile.Close()
@@ -1089,31 +1100,19 @@ func (u *ContainerService) DownloadContainerLogs(containerType, container, since
 			global.LOG.Errorf("os.Remove() failed: %v", err)
 		}
 	}()
-	errCh := make(chan error, 1)
-	go func() {
-		scanner := bufio.NewScanner(stdout)
-		var ansiRegex = re.GetRegex(re.AnsiEscapePattern)
-		for scanner.Scan() {
-			line := scanner.Text()
-			cleanLine := ansiRegex.ReplaceAllString(line, "")
-			if _, err := tempFile.WriteString(cleanLine + "\n"); err != nil {
-				errCh <- err
-				return
-			}
+	copyErr := copyContainerLogOutput(tempFile, stdout)
+	waitErr := dockerCmd.Wait()
+	if copyErr != nil {
+		return copyErr
+	}
+	if waitErr != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
-		if err := scanner.Err(); err != nil {
-			errCh <- err
-			return
-		}
-		errCh <- nil
-	}()
-	select {
-	case err := <-errCh:
-		if err != nil {
-			global.LOG.Errorf("Error: %v", err)
-		}
-	case <-time.After(40 * time.Second):
-		global.LOG.Errorf("Download container logs timeout reached")
+		return waitErr
+	}
+	if _, err := tempFile.Seek(0, io.SeekStart); err != nil {
+		return err
 	}
 	info, _ := tempFile.Stat()
 
@@ -1121,6 +1120,32 @@ func (u *ContainerService) DownloadContainerLogs(containerType, container, since
 	c.Header("Content-Disposition", "attachment; filename*=utf-8''"+url.PathEscape(info.Name()))
 	http.ServeContent(c.Writer, c.Request, info.Name(), info.ModTime(), tempFile)
 	return nil
+}
+
+func copyContainerLogOutput(dst io.Writer, src io.Reader) error {
+	reader := bufio.NewReader(src)
+	for {
+		line, err := reader.ReadString('\n')
+		if len(line) > 0 {
+			cleanLine := containerLogAnsiRegex.ReplaceAllString(line, "")
+			if _, writeErr := io.WriteString(dst, cleanLine); writeErr != nil {
+				return writeErr
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+func killContainerLogProcess(command *exec.Cmd) {
+	if command == nil || command.Process == nil {
+		return
+	}
+	killLongRunningCommand(command)
 }
 
 func (u *ContainerService) ContainerStats(id string) (*dto.ContainerStats, error) {

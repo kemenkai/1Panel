@@ -60,7 +60,10 @@
                 <el-button @click="visible = false">
                     {{ $t('commons.button.cancel') }}
                 </el-button>
-                <el-button type="primary" :disabled="selects.length === 0" @click="onImport">
+                <el-button type="primary" plain :disabled="displayData.length === 0" @click="onImportAll">
+                    {{ $t('commons.button.importAll') }}
+                </el-button>
+                <el-button type="primary" :disabled="selects.length === 0" @click="() => onImport()">
                     {{ $t('commons.button.import') }}
                 </el-button>
             </span>
@@ -85,7 +88,7 @@ const displayData = ref<any>([]);
 const currentRules = ref<Host.RuleInfo[]>([]);
 
 const uploadRef = ref();
-const uploaderFiles = ref();
+const uploaderFiles = ref<UploadFiles>([]);
 const pageData = ref([]);
 const paginationConfig = reactive({
     currentPage: 1,
@@ -94,10 +97,21 @@ const paginationConfig = reactive({
 });
 
 const acceptParams = async (): Promise<void> => {
+    resetImportData();
     visible.value = true;
-    displayData.value = [];
-    selects.value = [];
+
     loadCurrentData();
+};
+
+const resetImportData = () => {
+    loading.value = false;
+    displayData.value = [];
+    pageData.value = [];
+    selects.value = [];
+    uploaderFiles.value = [];
+    paginationConfig.currentPage = 1;
+    paginationConfig.total = 0;
+    uploadRef.value?.clearFiles();
 };
 
 const loadCurrentData = async () => {
@@ -200,12 +214,16 @@ const compareRules = (importedRules: any[]) => {
     search();
 };
 
-const onImport = async () => {
+const onImportAll = async () => {
+    await onImport(displayData.value);
+};
+
+const onImport = async (rules = selects.value) => {
     loading.value = true;
     let successCount = 0;
     let errorCount = 0;
 
-    for (const rule of selects.value) {
+    for (const rule of rules) {
         try {
             const params: Host.RuleIP = {
                 operation: 'add',

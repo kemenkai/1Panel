@@ -17,6 +17,7 @@ type SettingInfo struct {
 	Edition        string `json:"edition"`
 	Theme          string `json:"theme"`
 	MenuTabs       string `json:"menuTabs"`
+	MenuAccordion  string `json:"menuAccordion"`
 	Language       string `json:"language"`
 	DocSource      string `json:"docSource"`
 
@@ -52,16 +53,17 @@ type SettingBaseInfo struct {
 	DeveloperMode       string `json:"developerMode"`
 	UpgradeBackupCopies string `json:"upgradeBackupCopies"`
 
-	Port        string `json:"port"`
-	Ipv6        string `json:"ipv6"`
-	BindAddress string `json:"bindAddress"`
-	PanelName   string `json:"panelName"`
-	Edition     string `json:"edition"`
-	Theme       string `json:"theme"`
-	MenuTabs    string `json:"menuTabs"`
-	Language    string `json:"language"`
-	HideMenu    string `json:"hideMenu"`
-	DocSource   string `json:"docSource"`
+	Port          string `json:"port"`
+	Ipv6          string `json:"ipv6"`
+	BindAddress   string `json:"bindAddress"`
+	PanelName     string `json:"panelName"`
+	Edition       string `json:"edition"`
+	Theme         string `json:"theme"`
+	MenuTabs      string `json:"menuTabs"`
+	MenuAccordion string `json:"menuAccordion"`
+	Language      string `json:"language"`
+	HideMenu      string `json:"hideMenu"`
+	DocSource     string `json:"docSource"`
 
 	ServerPort             string `json:"serverPort"`
 	SecurityEntrance       string `json:"securityEntrance"`
@@ -246,12 +248,13 @@ type TerminalInfo struct {
 }
 
 type AppstoreUpdate struct {
-	Scope  string `json:"scope" validate:"required,oneof=UninstallDeleteImage UpgradeBackup UninstallDeleteBackup InstallAllowPort"`
+	Scope  string `json:"scope" validate:"required,oneof=UninstallDeleteImage UpgradeBackup UpgradeDeleteImage UninstallDeleteBackup InstallAllowPort"`
 	Status string `json:"status"  validate:"required,oneof=Disable Enable"`
 }
 type AppstoreConfig struct {
 	UninstallDeleteImage  string `json:"uninstallDeleteImage"`
 	UpgradeBackup         string `json:"upgradeBackup"`
+	UpgradeDeleteImage    string `json:"upgradeDeleteImage"`
 	UninstallDeleteBackup string `json:"uninstallDeleteBackup"`
 	InstallAllowPort      string `json:"installAllowPort"`
 }
@@ -264,6 +267,7 @@ type LoginSetting struct {
 	IsEnterprise   bool   `json:"isEnterprise"`
 	Language       string `json:"language"`
 	MenuTabs       string `json:"menuTabs"`
+	MenuAccordion  string `json:"menuAccordion"`
 	PanelName      string `json:"panelName"`
 	Theme          string `json:"theme"`
 	NeedCaptcha    bool   `json:"needCaptcha"`

@@ -52,6 +52,10 @@ export const pageMcpServer = (req: AI.McpServerSearch) => {
     return http.post<ResPage<AI.McpServer>>(`/ai/mcp/search`, req);
 };
 
+export const loadMcpServerDetail = (req: AI.McpServerDetail) => {
+    return http.post<AI.McpServer>(`/ai/mcp/server/detail`, req);
+};
+
 export const createMcpServer = (req: AI.McpServer) => {
     return http.post(`/ai/mcp/server`, req);
 };
@@ -66,6 +70,14 @@ export const deleteMcpServer = (req: AI.McpServerDelete) => {
 
 export const operateMcpServer = (req: AI.McpServerOperate) => {
     return http.post(`/ai/mcp/server/op`, req);
+};
+
+export const syncMcpServerStatus = (req: AI.McpServerStatusSync) => {
+    return http.post<AI.McpServerStatus[]>(`/ai/mcp/server/status/sync`, req);
+};
+
+export const testMcpServerConnection = (req: AI.McpServerConnectionTest) => {
+    return http.post<AI.McpServerConnectionTestRes>(`/ai/mcp/server/connection/test`, req);
 };
 
 export const bindMcpDomain = (req: AI.McpBindDomain) => {
@@ -232,10 +244,6 @@ export const updateAgentAccountModel = (req: AI.AgentAccountModelUpdateReq) => {
 
 export const deleteAgentAccountModel = (req: AI.AgentAccountModelDeleteReq) => {
     return http.post(`/ai/accounts/models/delete`, req);
-};
-
-export const verifyAgentAccount = (req: AI.AgentAccountVerifyReq) => {
-    return http.post(`/ai/accounts/verify`, req);
 };
 
 export const deleteAgentAccount = (req: AI.AgentAccountDeleteReq) => {

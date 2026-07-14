@@ -60,6 +60,8 @@ export namespace Runtime {
         source?: string;
         codeDir?: string;
         port?: number;
+        taskID?: string;
+        install?: boolean;
         exposedPorts?: ExposedPort[];
         environments?: Environment[];
         volumes?: Volume[];
@@ -71,6 +73,7 @@ export namespace Runtime {
         hostPort: number;
         containerPort: number;
         hostIP: string;
+        protocol: string;
     }
     export interface Environment {
         key: string;
@@ -79,6 +82,7 @@ export namespace Runtime {
     export interface Volume {
         source: string;
         target: string;
+        mode: string;
     }
 
     export interface ExtraHost {
@@ -96,11 +100,14 @@ export namespace Runtime {
         appID?: number;
         version?: string;
         rebuild?: boolean;
+        install?: boolean;
     }
 
     export interface RuntimeDelete {
         id: number;
         forceDelete: boolean;
+        deleteImage?: boolean;
+        taskID?: string;
     }
 
     export interface RuntimeOperate {

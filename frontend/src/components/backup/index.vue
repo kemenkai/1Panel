@@ -129,7 +129,7 @@
                 </el-checkbox>
                 <span class="input-help">{{ $t('database.mongodbRecoverDropAllCollectionsHelper') }}</span>
             </el-form-item>
-            <el-form-item v-if="type === 'mysql' || type === 'mysql-cluster'" :label="$t('cronjob.backupArgs')">
+            <el-form-item v-if="supportMysqlBackupArgs()" :label="$t('cronjob.backupArgs')">
                 <el-select v-model="args" filterable allow-create multiple>
                     <el-option v-for="item in mysqlArgs" :key="item.arg" :value="item.arg" :label="item.arg">
                         {{ item.arg }}
@@ -174,7 +174,6 @@
 
     <OpDialog ref="opRef" @search="search" />
     <TaskLog ref="taskLogRef" @close="search" />
-    <PushApp ref="pushAppRef" />
 </template>
 
 <script lang="ts" setup>
@@ -201,19 +200,15 @@ import TaskLog from '@/components/log/task/index.vue';
 import { routerToFileWithPath } from '@/utils/router';
 import { useGlobalStore } from '@/composables/useGlobalStore';
 import { mysqlArgs } from '@/views/cronjob/cronjob/helper';
-import { loadOptionalComponent } from '@/extensions/optional';
 const { currentNode } = useGlobalStore();
 
 const emit = defineEmits(['close']);
-
-const PushApp = defineAsyncComponent(() => loadOptionalComponent('/src/xpack/views/appstore/push-app/index.vue'));
 
 const selects = ref<any>([]);
 const args = ref([]);
 const loading = ref();
 const opRef = ref();
 const taskLogRef = ref();
-const pushAppRef = ref();
 
 const data = ref();
 const paginationConfig = reactive({
@@ -331,6 +326,10 @@ const loadSize = async (params: any) => {
 
 const openTaskLog = (taskID: string) => {
     taskLogRef.value.openWithTaskID(taskID, true, node.value);
+};
+
+const supportMysqlBackupArgs = () => {
+    return ['mysql', 'mysql-cluster', 'mariadb'].includes(type.value);
 };
 
 function selectable(row) {
@@ -455,21 +454,6 @@ const buttons = [
         },
         click: (row: Backup.RecordInfo) => {
             onRecover(row);
-        },
-    },
-    {
-        label: i18n.global.t('commons.button.migrate'),
-        disabled: (row: any) => {
-            return row.size === 0 || row.status === 'Failed' || row.accountType !== 'LOCAL';
-        },
-        show: () => {
-            return type.value === 'app';
-        },
-        click: (row: Backup.RecordInfo) => {
-            pushAppRef.value.acceptParams({
-                appInstallID: appInstallID.value,
-                appBackupID: row.id,
-            });
         },
     },
     {

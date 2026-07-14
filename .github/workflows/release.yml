@@ -1,0 +1,101 @@
+name: Release
+
+# Manually dispatched: builds the panel from the selected branch and publishes
+# a GitHub Release with linux (amd64/arm64) and windows (amd64) binaries.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag, e.g. v2.2.3-r1 (created at the dispatched commit)'
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: '1.25.7'
+  NODE_VERSION: '24.11.1'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate tag
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]] || { echo "invalid tag: $TAG (expected e.g. v2.2.3-r1)"; exit 1; }
+          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q .; then echo "tag $TAG already exists"; exit 1; fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            agent/go.sum
+            core/go.sum
+
+      - name: Build frontend
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: |
+          cd frontend
+          npm ci
+          npm run build:pro
+
+      - name: Build binaries
+        run: |
+          set -euo pipefail
+          for target in linux/amd64 linux/arm64 windows/amd64; do
+            GOOS="${target%/*}"
+            GOARCH="${target#*/}"
+            EXT=""
+            [ "$GOOS" = "windows" ] && EXT=".exe"
+            OUT="dist/1panel-${TAG}-${GOOS}-${GOARCH}"
+            mkdir -p "$OUT"
+            echo "==> building $target"
+            (cd core  && CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags '-s -w' -o "../${OUT}/1panel-core${EXT}"  cmd/server/main.go)
+            (cd agent && CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags '-s -w' -o "../${OUT}/1panel-agent${EXT}" cmd/server/main.go)
+          done
+
+      - name: Package with checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          for d in 1panel-*-linux-*; do
+            tar -czf "${d}.tar.gz" "$d"
+          done
+          for d in 1panel-*-windows-*; do
+            (cd "$d" && zip -qr "../${d}.zip" .)
+          done
+          sha256sum *.tar.gz *.zip > "checksums-${TAG}.txt"
+          cat "checksums-${TAG}.txt"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --title "1Panel $TAG" \
+            --generate-notes \
+            --notes "Panel binaries built from \`${GITHUB_REF_NAME}\` @ \`${GITHUB_SHA::8}\`.
+
+| Platform | Asset |
+|---|---|
+| Linux amd64 | \`1panel-${TAG}-linux-amd64.tar.gz\` |
+| Linux arm64 | \`1panel-${TAG}-linux-arm64.tar.gz\` |
+| Windows amd64 | \`1panel-${TAG}-windows-amd64.zip\` |
+
+Each archive contains \`1panel-core\` and \`1panel-agent\`. Verify with \`checksums-${TAG}.txt\`." \
+            dist/*.tar.gz dist/*.zip "dist/checksums-${TAG}.txt"

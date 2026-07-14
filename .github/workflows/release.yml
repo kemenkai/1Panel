@@ -73,9 +73,14 @@ jobs:
           set -euo pipefail
           cd dist
           for d in 1panel-*-linux-*; do
+            printf '%s\n' "$TAG" > "${d}/VERSION"
+            cp "${GITHUB_WORKSPACE}/scripts/upgrade/upgrade.sh" "${d}/upgrade.sh"
+            chmod +x "${d}/upgrade.sh"
             tar -czf "${d}.tar.gz" "$d"
           done
           for d in 1panel-*-windows-*; do
+            printf '%s\n' "$TAG" > "${d}/VERSION"
+            cp "${GITHUB_WORKSPACE}/scripts/upgrade/upgrade.ps1" "${d}/upgrade.ps1"
             (cd "$d" && zip -qr "../${d}.zip" .)
           done
           sha256sum *.tar.gz *.zip > "checksums-${TAG}.txt"

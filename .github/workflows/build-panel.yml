@@ -51,6 +51,16 @@ jobs:
           go vet ./...
           go test ./... -count=1
 
+      - name: Lint upgrade/deploy scripts
+        run: |
+          set -euo pipefail
+          for f in scripts/*.sh scripts/upgrade/*.sh; do
+            [ -e "$f" ] || continue
+            echo "==> bash -n $f"
+            bash -n "$f"
+          done
+          pwsh -NoProfile -Command '$tokens=$null; $errs=$null; [void][System.Management.Automation.Language.Parser]::ParseFile("scripts/upgrade/upgrade.ps1",[ref]$tokens,[ref]$errs); if($errs.Count -gt 0){$errs | ForEach-Object { Write-Host $_ }; exit 1}; Write-Host "upgrade.ps1 parse OK"'
+
   # Native Windows test run exercises the platform-aware assertions that a
   # linux GOOS=windows cross-compile cannot execute. Windows runners bill at
   # 2x on private repos, so this only runs on manual dispatch.

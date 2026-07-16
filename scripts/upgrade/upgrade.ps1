@@ -278,6 +278,60 @@ function Invoke-DbFix {
     }
 }
 
+function Resolve-Sqlite {
+    param([string]$Root)
+    $toolsSqlite = Join-Path $Root "tools\sqlite3.exe"
+    if (Test-Path $toolsSqlite) { return $toolsSqlite }
+    $cmd = Get-Command "sqlite3.exe" -ErrorAction SilentlyContinue
+    if ($null -ne $cmd) { return $cmd.Source }
+    return $null
+}
+
+# Set-PanelVersion makes the panel footer reflect the new version. The upgraded
+# core binary self-heals SystemVersion in core.db on startup (compiled version
+# injected via ldflags), so this is belt-and-suspenders: it updates
+# ORIGINAL_VERSION in 1pctl.env (from which the agent re-derives its version)
+# and, when sqlite3.exe is available, writes SystemVersion immediately.
+function Set-PanelVersion {
+    param(
+        [string]$Root,
+        [string]$ConfEnv,
+        [string]$DataDir,
+        [string]$Version
+    )
+    if ((Test-Blank $Version) -or ($Version -eq "unknown")) {
+        Write-Log "version unknown, skip version sync"
+        return
+    }
+    if (Test-Path $ConfEnv) {
+        $lines = @(Get-Content -Path $ConfEnv)
+        $found = $false
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match '^ORIGINAL_VERSION=') {
+                $lines[$i] = "ORIGINAL_VERSION=$Version"
+                $found = $true
+            }
+        }
+        if ($found) {
+            Set-Content -Path $ConfEnv -Value $lines -Encoding ASCII
+            Write-Log "updated ORIGINAL_VERSION in $ConfEnv : $Version"
+        }
+    }
+    $sqlite = Resolve-Sqlite -Root $Root
+    if ($null -ne $sqlite) {
+        foreach ($db in @((Join-Path $DataDir "db\core.db"), (Join-Path $DataDir "db\agent.db"))) {
+            if (-not (Test-Path $db)) { continue }
+            & $sqlite $db "UPDATE settings SET value='$Version' WHERE key='SystemVersion';" 2>&1 | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                Write-Log "WARNING: could not update SystemVersion in $db"
+            }
+        }
+        Write-Log "SystemVersion set to $Version in core.db/agent.db"
+    } else {
+        Write-Log "sqlite3 not found; core binary will self-heal SystemVersion on next start"
+    }
+}
+
 function Backup-Current {
     param(
         [string]$Root,
@@ -412,6 +466,7 @@ function Invoke-Upgrade {
         Write-Log "binaries replaced"
 
         Invoke-DbFix -Root $Root -DbPath $dbPath
+        Set-PanelVersion -Root $Root -ConfEnv $confEnv -DataDir $dataDir -Version $newVersion
 
         Start-PanelService -Root $Root -ServiceName $CoreServiceName
         Start-PanelService -Root $Root -ServiceName $AgentServiceName

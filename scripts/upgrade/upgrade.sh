@@ -288,6 +288,39 @@ db_fix() {
     fi
 }
 
+# sync_version records the new version so the panel footer reflects it. The
+# upgraded core binary self-heals SystemVersion in core.db on startup (compiled
+# version injected via ldflags), so this is belt-and-suspenders: it updates
+# ORIGINAL_VERSION in the param file (from which the agent re-derives its version
+# each start) and, when sqlite3 is present, writes SystemVersion immediately.
+sync_version() {
+    local ver="${NEW_VERSION}"
+    if [[ -z "${ver}" || "${ver}" == "unknown" ]]; then
+        log "version unknown, skip version sync"
+        return 0
+    fi
+    local pctl="${PANEL_BIN_DIR}/1pctl"
+    if [[ -f "${pctl}" ]]; then
+        if grep -qE '^ORIGINAL_VERSION=' "${pctl}"; then
+            sed -i -E "s|^ORIGINAL_VERSION=.*|ORIGINAL_VERSION=${ver}|" "${pctl}" \
+                && log "updated ORIGINAL_VERSION in ${pctl}: ${ver}" \
+                || log "WARNING: failed to update ORIGINAL_VERSION in ${pctl}"
+        fi
+    fi
+    if command -v sqlite3 >/dev/null 2>&1; then
+        local p
+        for p in "${INSTALL_DIR}/1panel/db/core.db" "${INSTALL_DIR}/1panel/db/agent.db"; do
+            [[ -f "${p}" ]] || continue
+            if ! sqlite3 "${p}" "UPDATE settings SET value='${ver}' WHERE key='SystemVersion';" 2>/dev/null; then
+                log "WARNING: could not update SystemVersion in ${p}"
+            fi
+        done
+        log "SystemVersion set to ${ver} in core.db/agent.db"
+    else
+        log "sqlite3 not found; core binary will self-heal SystemVersion on next start"
+    fi
+}
+
 confirm_yes() {
     local prompt="$1"
     if [[ "${ASSUME_YES}" == "true" ]]; then
@@ -311,6 +344,7 @@ do_upgrade() {
     do_backup
     replace_binaries
     db_fix
+    sync_version
 
     svc_start "${CORE_SERVICE}"
     svc_start "${AGENT_SERVICE}"

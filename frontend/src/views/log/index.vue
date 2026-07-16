@@ -12,7 +12,7 @@ import { computed, onMounted } from 'vue';
 import i18n from '@/lang';
 import { useWindowsPanel } from '@/composables/useWindowsPanel';
 
-const { isWindowsPanel, ensureOsInfo } = useWindowsPanel();
+const { isWindowsPanel, isOsLoaded, ensureOsInfo } = useWindowsPanel();
 
 onMounted(() => {
     ensureOsInfo();
@@ -26,7 +26,8 @@ const buttons = computed(() => {
         },
     ];
     // SSH login logs and website logs are Linux-only; hide them on Windows.
-    if (!isWindowsPanel.value) {
+    // Gate on isOsLoaded so the Linux-only tabs never flash on Windows before OS resolves.
+    if (isOsLoaded.value && !isWindowsPanel.value) {
         items.push(
             {
                 label: i18n.global.t('ssh.loginLogs'),

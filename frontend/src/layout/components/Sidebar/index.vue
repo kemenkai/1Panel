@@ -282,9 +282,15 @@ function adjustAndCleanMenu(menuItem, list) {
     return newMenu;
 }
 
-onMounted(() => {
-    if (!menuStore.menuList || menuStore.menuList.length === 0) {
-        menuStore.setMenuList(buildAuthVisibleMenuList(menuList));
+onMounted(async () => {
+    // Resolve the OS first so the initial fill is Windows-aware. Without this the
+    // full (Linux) menu flashes before search() converges, and a persisted full
+    // menu from a previous session would leak Linux entries on Windows until the
+    // request completes. setDefaultMenuList() filters for Windows and no-ops when
+    // the computed list already matches, so it is safe to call unconditionally here.
+    await ensureOsInfo();
+    if (!menuStore.menuList || menuStore.menuList.length === 0 || isWindowsPanel.value) {
+        setDefaultMenuList();
     }
     search();
 });

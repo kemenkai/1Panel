@@ -13,7 +13,7 @@ import i18n from '@/lang';
 import { useGlobalStore } from '@/composables/useGlobalStore';
 import { useWindowsPanel } from '@/composables/useWindowsPanel';
 const { globalStore, isOffline, isFxplay, isAdmin, isEnterprise } = useGlobalStore();
-const { isWindowsPanel, ensureOsInfo } = useWindowsPanel();
+const { isWindowsPanel, isOsLoaded, ensureOsInfo } = useWindowsPanel();
 
 onMounted(() => {
     ensureOsInfo();
@@ -51,7 +51,7 @@ const buttons = computed<RouterButton[]>(() => {
                   },
               ]
             : []),
-        ...(isAdmin.value && !isWindowsPanel.value
+        ...(isAdmin.value && isOsLoaded.value && !isWindowsPanel.value
             ? [
                   {
                       label: i18n.global.t('setting.snapshot', 2),

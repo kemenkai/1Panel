@@ -117,7 +117,10 @@ jobs:
         run: |
           set -euo pipefail
           SHORT_SHA="${GITHUB_SHA::8}"
-          PANEL_VERSION="dev-${SHORT_SHA}"
+          # These are throwaway CI artifacts, not releases. Do NOT inject a version
+          # here: the empty buildinfo.Version makes the startup self-heal a no-op,
+          # so a CI binary can never rewrite a user's SystemVersion to "dev-<sha>".
+          # Only release.yml injects the real tag.
           for target in linux/amd64 linux/arm64 windows/amd64; do
             GOOS="${target%/*}"
             GOARCH="${target#*/}"
@@ -126,7 +129,7 @@ jobs:
             OUT="dist/1panel-${GOOS}-${GOARCH}"
             mkdir -p "$OUT"
             echo "==> building $target"
-            (cd core  && CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags "-s -w -X github.com/1Panel-dev/1Panel/core/buildinfo.Version=${PANEL_VERSION}" -o "../${OUT}/1panel-core${EXT}"  cmd/server/main.go)
+            (cd core  && CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags '-s -w' -o "../${OUT}/1panel-core${EXT}"  cmd/server/main.go)
             (cd agent && CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags '-s -w' -o "../${OUT}/1panel-agent${EXT}" cmd/server/main.go)
           done
           echo "SHORT_SHA=$SHORT_SHA" >> "$GITHUB_ENV"

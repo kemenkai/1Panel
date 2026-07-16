@@ -304,16 +304,15 @@ function Set-PanelVersion {
         return
     }
     if (Test-Path $ConfEnv) {
-        $lines = @(Get-Content -Path $ConfEnv)
-        $found = $false
-        for ($i = 0; $i -lt $lines.Count; $i++) {
-            if ($lines[$i] -match '^ORIGINAL_VERSION=') {
-                $lines[$i] = "ORIGINAL_VERSION=$Version"
-                $found = $true
-            }
-        }
-        if ($found) {
-            Set-Content -Path $ConfEnv -Value $lines -Encoding ASCII
+        # Byte-safe rewrite: read/write UTF-8 (superset of the ASCII the installer
+        # writes) so a non-ASCII BASE_DIR / username in 1pctl.env is preserved.
+        # A naive Set-Content -Encoding ASCII would turn those chars into '?' and
+        # could break BASE_DIR, leaving the panel unable to find its database.
+        $text = [System.IO.File]::ReadAllText($ConfEnv)
+        $new = [regex]::Replace($text, '(?m)^ORIGINAL_VERSION=.*', "ORIGINAL_VERSION=$Version")
+        if ($new -ne $text) {
+            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+            [System.IO.File]::WriteAllText($ConfEnv, $new, $utf8NoBom)
             Write-Log "updated ORIGINAL_VERSION in $ConfEnv : $Version"
         }
     }

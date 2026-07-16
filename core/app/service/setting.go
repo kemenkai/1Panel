@@ -164,6 +164,13 @@ func processHideMenu(settingMap map[string]string, filterForWindows bool) {
 		}
 	}
 
+	if isWindowsLite {
+		// Backfill allowed top-level menus that a previously-clobbered HideMenu
+		// may be missing (e.g. an old build saved a 4-menu tree via the drawer,
+		// so Container/Toolbox would otherwise stay gone forever). Only fully
+		// absent nodes are added; existing entries keep their IsShow.
+		menus = backfillWindowsAllowedMenus(menus)
+	}
 	sortShowMenus(menus)
 	if isWindowsLite {
 		menus = filterWindowsLiteMenus(menus)
@@ -171,6 +178,38 @@ func processHideMenu(settingMap map[string]string, filterForWindows bool) {
 	if sortedBytes, err := json.Marshal(menus); err == nil {
 		settingMap["HideMenu"] = string(sortedBytes)
 	}
+}
+
+// windowsAllowedTopMenus is the top-level menu allowlist for the Windows panel.
+// Everything else (websites/databases/app-store/host/cronjob/...) is Linux-only
+// and hidden. Keep Enhance-Menu here — it carries our Windows service management.
+var windowsAllowedTopMenus = map[string]struct{}{
+	"Home-Menu":      {},
+	"Enhance-Menu":   {},
+	"Container-Menu": {},
+	"Toolbox-Menu":   {},
+	"Log-Menu":       {},
+	"Setting-Menu":   {},
+}
+
+func backfillWindowsAllowedMenus(menus []dto.ShowMenu) []dto.ShowMenu {
+	present := make(map[string]struct{}, len(menus))
+	for _, m := range menus {
+		present[m.Label] = struct{}{}
+	}
+	var builtin []dto.ShowMenu
+	if err := json.Unmarshal([]byte(helper.LoadMenus()), &builtin); err != nil {
+		return menus
+	}
+	for _, b := range builtin {
+		if _, allowed := windowsAllowedTopMenus[b.Label]; !allowed {
+			continue
+		}
+		if _, ok := present[b.Label]; !ok {
+			menus = append(menus, b)
+		}
+	}
+	return menus
 }
 
 func sortShowMenus(menus []dto.ShowMenu) {
@@ -188,18 +227,9 @@ func sortShowMenus(menus []dto.ShowMenu) {
 }
 
 func filterWindowsLiteMenus(menus []dto.ShowMenu) []dto.ShowMenu {
-	allowedLabels := map[string]struct{}{
-		"Home-Menu":      {},
-		"Enhance-Menu":   {},
-		"Container-Menu": {},
-		"Toolbox-Menu":   {},
-		"Log-Menu":       {},
-		"Setting-Menu":   {},
-	}
-
 	var filtered []dto.ShowMenu
 	for _, menu := range menus {
-		if _, ok := allowedLabels[menu.Label]; !ok {
+		if _, ok := windowsAllowedTopMenus[menu.Label]; !ok {
 			continue
 		}
 		filtered = append(filtered, menu)

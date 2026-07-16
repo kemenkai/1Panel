@@ -28,6 +28,7 @@ import (
 	"github.com/1Panel-dev/1Panel/core/constant"
 	"github.com/1Panel-dev/1Panel/core/global"
 	"github.com/1Panel-dev/1Panel/core/i18n"
+	"github.com/1Panel-dev/1Panel/core/init/migration/helper"
 	"github.com/1Panel-dev/1Panel/core/utils/common"
 	"github.com/1Panel-dev/1Panel/core/utils/controller"
 	"github.com/1Panel-dev/1Panel/core/utils/encrypt"
@@ -81,18 +82,7 @@ func (u *SettingService) GetSettingInfo() (*dto.SettingInfo, error) {
 	for _, set := range setting {
 		settingMap[set.Key] = set.Value
 	}
-	if hideMenu, ok := settingMap["HideMenu"]; ok && len(hideMenu) > 0 {
-		var menus []dto.ShowMenu
-		if err := json.Unmarshal([]byte(hideMenu), &menus); err == nil {
-			sortShowMenus(menus)
-			if platformUtils.Current() == platformUtils.OSWindows {
-				menus = filterWindowsLiteMenus(menus)
-			}
-			if sortedBytes, err := json.Marshal(menus); err == nil {
-				settingMap["HideMenu"] = string(sortedBytes)
-			}
-		}
-	}
+	processHideMenu(settingMap, false)
 	var info dto.SettingInfo
 	arr, err := json.Marshal(settingMap)
 	if err != nil {
@@ -127,15 +117,7 @@ func (u *SettingService) GetSettingBaseInfo() (*dto.SettingBaseInfo, error) {
 	for _, set := range setting {
 		settingMap[set.Key] = set.Value
 	}
-	if hideMenu, ok := settingMap["HideMenu"]; ok && len(hideMenu) > 0 {
-		var menus []dto.ShowMenu
-		if err := json.Unmarshal([]byte(hideMenu), &menus); err == nil {
-			sortShowMenus(menus)
-			if sortedBytes, err := json.Marshal(menus); err == nil {
-				settingMap["HideMenu"] = string(sortedBytes)
-			}
-		}
-	}
+	processHideMenu(settingMap, true)
 	var info dto.SettingBaseInfo
 	arr, err := json.Marshal(settingMap)
 	if err != nil {
@@ -156,6 +138,41 @@ func (u *SettingService) GetSettingBaseInfo() (*dto.SettingBaseInfo, error) {
 	return &info, err
 }
 
+// processHideMenu normalizes settingMap["HideMenu"] in place: it unmarshals the
+// stored menu tree, sorts it, and re-marshals it back.
+//
+// When filterForWindows is true and the panel runs on Windows (Lite), it also
+// converges the sidebar to the allowed top-level menus (see filterWindowsLiteMenus).
+// In that case the result is produced even when HideMenu is missing, empty or
+// unparseable, by falling back to the built-in full menu tree — so the Windows
+// sidebar never leaks Linux-only entries just because the stored value is absent.
+//
+// When filterForWindows is false, behavior matches the original code path: the
+// value is only touched when it exists and parses successfully.
+func processHideMenu(settingMap map[string]string, filterForWindows bool) {
+	isWindowsLite := filterForWindows && platformUtils.Current() == platformUtils.OSWindows
+
+	var menus []dto.ShowMenu
+	if err := json.Unmarshal([]byte(settingMap["HideMenu"]), &menus); err != nil || len(menus) == 0 {
+		if !isWindowsLite {
+			return
+		}
+		// Windows fallback: rebuild from the built-in full menu tree so the
+		// sidebar is always converged regardless of the stored HideMenu value.
+		if err := json.Unmarshal([]byte(helper.LoadMenus()), &menus); err != nil {
+			return
+		}
+	}
+
+	sortShowMenus(menus)
+	if isWindowsLite {
+		menus = filterWindowsLiteMenus(menus)
+	}
+	if sortedBytes, err := json.Marshal(menus); err == nil {
+		settingMap["HideMenu"] = string(sortedBytes)
+	}
+}
+
 func sortShowMenus(menus []dto.ShowMenu) {
 	for i := range menus {
 		if len(menus[i].Children) > 0 {
@@ -172,10 +189,12 @@ func sortShowMenus(menus []dto.ShowMenu) {
 
 func filterWindowsLiteMenus(menus []dto.ShowMenu) []dto.ShowMenu {
 	allowedLabels := map[string]struct{}{
-		"Home-Menu":    {},
-		"Enhance-Menu": {},
-		"Log-Menu":     {},
-		"Setting-Menu": {},
+		"Home-Menu":      {},
+		"Enhance-Menu":   {},
+		"Container-Menu": {},
+		"Toolbox-Menu":   {},
+		"Log-Menu":       {},
+		"Setting-Menu":   {},
 	}
 
 	var filtered []dto.ShowMenu

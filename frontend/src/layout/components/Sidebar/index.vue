@@ -40,8 +40,10 @@ import { getSettingBaseInfo } from '@/api/modules/setting';
 import PrimaryMenu from '@/assets/images/menu-bg.svg?component';
 import { hasPermissionMetaAccess, hasRouteRoleAccess } from '@/utils/rbac';
 import { useGlobalStore } from '@/composables/useGlobalStore';
+import { useWindowsPanel, WINDOWS_ALLOWED_TOP_MENUS } from '@/composables/useWindowsPanel';
 
 const route = useRoute();
+const { isWindowsPanel, ensureOsInfo } = useWindowsPanel();
 const menuStore = MenuStore();
 const { currentNode, isAdmin, isEE, isIntl, menuAccordion, permissions } = useGlobalStore();
 const version = ref();
@@ -88,6 +90,10 @@ const openTask = () => {
 };
 
 const search = async () => {
+    // Load OS info first so the Windows fallback (setDefaultMenuList) can
+    // converge the sidebar even when the base info request fails or HideMenu
+    // is empty.
+    await ensureOsInfo();
     let settingInfo: { systemVersion: string; hideMenu?: string; menuAccordion?: string } | null = null;
     try {
         const res = await getSettingBaseInfo();
@@ -118,7 +124,13 @@ function isSameMenuList(source: RouteRecordRaw[], target: RouteRecordRaw[]) {
 }
 
 function setDefaultMenuList() {
-    const rstMenuList = buildAuthVisibleMenuList(menuList);
+    let source = menuList;
+    if (isWindowsPanel.value) {
+        // Windows fallback: keep only the allowed top-level menus so Linux-only
+        // entries never leak when we fall back to the full menu tree.
+        source = menuList.filter((item) => WINDOWS_ALLOWED_TOP_MENUS.includes(item.name as string));
+    }
+    const rstMenuList = buildAuthVisibleMenuList(source);
     if (!isSameMenuList(menuStore.menuList as RouteRecordRaw[], rstMenuList)) {
         menuStore.setMenuList(rstMenuList);
     }

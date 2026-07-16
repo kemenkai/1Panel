@@ -8,10 +8,16 @@
 </template>
 
 <script lang="ts" setup>
-import { computed } from 'vue';
+import { computed, onMounted } from 'vue';
 import i18n from '@/lang';
 import { useGlobalStore } from '@/composables/useGlobalStore';
+import { useWindowsPanel } from '@/composables/useWindowsPanel';
 const { globalStore, isOffline, isFxplay, isAdmin, isEnterprise } = useGlobalStore();
+const { isWindowsPanel, ensureOsInfo } = useWindowsPanel();
+
+onMounted(() => {
+    ensureOsInfo();
+});
 
 const buttons = computed<RouterButton[]>(() => {
     const items = [
@@ -45,7 +51,7 @@ const buttons = computed<RouterButton[]>(() => {
                   },
               ]
             : []),
-        ...(isAdmin.value
+        ...(isAdmin.value && !isWindowsPanel.value
             ? [
                   {
                       label: i18n.global.t('setting.snapshot', 2),

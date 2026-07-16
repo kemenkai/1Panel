@@ -22,6 +22,7 @@ func Init() {
 	global.CONF.Conn.BindAddress, _ = settingRepo.GetValueByKey("BindAddress")
 	global.CONF.Conn.SSL, _ = settingRepo.GetValueByKey("SSL")
 	global.CONF.Base.Version, _ = settingRepo.GetValueByKey("SystemVersion")
+	SyncCompiledVersion()
 	if err := settingRepo.Update("SystemStatus", "Free"); err != nil {
 		global.LOG.Fatalf("init service before start failed, err: %v", err)
 	}

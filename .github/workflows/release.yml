@@ -64,7 +64,7 @@ jobs:
             OUT="dist/1panel-${TAG}-${GOOS}-${GOARCH}"
             mkdir -p "$OUT"
             echo "==> building $target"
-            (cd core  && CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags '-s -w' -o "../${OUT}/1panel-core${EXT}"  cmd/server/main.go)
+            (cd core  && CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags "-s -w -X github.com/1Panel-dev/1Panel/core/buildinfo.Version=${TAG}" -o "../${OUT}/1panel-core${EXT}"  cmd/server/main.go)
             (cd agent && CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -ldflags '-s -w' -o "../${OUT}/1panel-agent${EXT}" cmd/server/main.go)
           done
 

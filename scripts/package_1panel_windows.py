@@ -203,7 +203,7 @@ def rebuild_frontend_assets() -> None:
     run_command(["npm", "run", "build:pro"], cwd=REPO_ROOT / "frontend")
 
 
-def rebuild_windows_binaries(core_binary: Path, agent_binary: Path) -> None:
+def rebuild_windows_binaries(core_binary: Path, agent_binary: Path, version: str = "") -> None:
     build_env = {
         "CGO_ENABLED": "0",
         "GOOS": "windows",
@@ -211,8 +211,12 @@ def rebuild_windows_binaries(core_binary: Path, agent_binary: Path) -> None:
     }
     core_binary.parent.mkdir(parents=True, exist_ok=True)
     agent_binary.parent.mkdir(parents=True, exist_ok=True)
+    # 编译期注入版本号，使 core 启动自愈能将 SystemVersion 写回数据库。
+    core_ldflags = "-s -w"
+    if version:
+        core_ldflags += f" -X github.com/1Panel-dev/1Panel/core/buildinfo.Version={version}"
     run_command(
-        ["go", "build", "-trimpath", "-ldflags", "-s -w", "-o", str(core_binary), "./cmd/server/main.go"],
+        ["go", "build", "-trimpath", "-ldflags", core_ldflags, "-o", str(core_binary), "./cmd/server/main.go"],
         cwd=REPO_ROOT / "core",
         env=build_env,
     )
@@ -515,7 +519,7 @@ def main() -> int:
 
     if not args.skip_build:
         rebuild_frontend_assets()
-        rebuild_windows_binaries(core_binary=core_binary, agent_binary=agent_binary)
+        rebuild_windows_binaries(core_binary=core_binary, agent_binary=agent_binary, version=version)
 
     ensure_file(core_binary, "core binary")
     ensure_file(agent_binary, "agent binary")
